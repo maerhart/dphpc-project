@@ -39,7 +39,7 @@ public :
                 mRewriter.InsertTextAfterToken(func->getEndLoc(), "\n\n__global__ void __gpu_main_kernel(int argc, char* argv[]) { __gpu_main(argc, argv); }");
             }
 
-            llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
+            //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
             mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
         }
     }
@@ -66,15 +66,41 @@ private:
 class MyFrontendAction : public ASTFrontendAction {
 public:
     void EndSourceFileAction() override {
-        SourceManager &sm = mRewriter.getSourceMgr();
+//        SourceManager &sm = mRewriter.getSourceMgr();
 
-        StringRef fname = sm.getFileEntryForID(sm.getMainFileID())->getName();
-        llvm::errs() << "** EndSourceFileAction for: " << fname << "\n";
+//        StringRef fname = sm.getFileEntryForID(sm.getMainFileID())->getName();
+//        llvm::errs() << "** EndSourceFileAction for: " << fname << "\n";
 
-        std::error_code error_code;
-        llvm::raw_fd_ostream outFile((fname + ".cu").str(), error_code,
-                                     llvm::sys::fs::OF_None);
-        mRewriter.getEditBuffer(sm.getMainFileID()).write(outFile);
+//        std::error_code error_code;
+//        llvm::raw_fd_ostream outFile((fname + ".cu").str(), error_code,
+//                                     llvm::sys::fs::OF_None);
+//        mRewriter.getEditBuffer(sm.getMainFileID()).write(outFile);
+        //mRewriter.overwriteChangedFiles();
+
+        for (auto I = mRewriter.buffer_begin(), E = mRewriter.buffer_end(); I != E; ++I) {
+            FileID fileID = I->first;
+            const FileEntry *fileEntry = mRewriter.getSourceMgr().getFileEntryForID(fileID);
+            StringRef fileName = fileEntry->getName();
+
+            // silly detection of system headers:
+            // if name starts with '/' then it is system header
+            if (fileName[0] == '/') {
+                continue; // skip system headers
+            }
+
+            llvm::errs() << "Trying to write " << fileName << " : " << fileEntry->tryGetRealPathName() << "\n";
+
+            std::string fileExtension;
+            if (fileID == mRewriter.getSourceMgr().getMainFileID()) {
+                fileExtension = ".cu";
+            } else {
+                fileExtension = ".cuh";
+            }
+
+            std::error_code error_code;
+            raw_fd_ostream outFile((fileName + fileExtension).str(), error_code, llvm::sys::fs::OF_None);
+            mRewriter.getEditBuffer(fileID).write(outFile);
+        }
     }
 
     std::unique_ptr<ASTConsumer> CreateASTConsumer(
