@@ -8,7 +8,7 @@
 #define MPI_ANY_TAG -1
 
 typedef int MPI_Comm;
-typedef struct MPI_Datatype_t {} MPI_Datatype;
+typedef int MPI_Datatype;
 typedef int MPI_Op;
 typedef struct MPI_Status_t {} MPI_Status;
 typedef struct MPI_Group_t {} MPI_Group;
@@ -116,17 +116,17 @@ __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
 __device__ extern MPI_Comm MPI_COMM_WORLD;
 __device__ extern MPI_Comm MPI_COMM_NULL;
 
-__device__ extern MPI_Datatype MPI_INT;
-__device__ extern MPI_Datatype MPI_DOUBLE;
-__device__ extern MPI_Datatype MPI_CHAR;
-__device__ extern MPI_Datatype MPI_BYTE;
-__device__ extern MPI_Datatype MPI_DOUBLE_INT;
-__device__ extern MPI_Datatype MPI_LONG_LONG;
+#define MPI_INT 0
+#define MPI_DOUBLE 1
+#define MPI_CHAR 2
+#define MPI_BYTE 3
+#define MPI_DOUBLE_INT 4
+#define MPI_LONG_LONG 5
 
 #define MPI_SUM 1
 #define MPI_MIN 2
 #define MPI_MAX 3
-#define MPI_MAXLOC 4;
+#define MPI_MAXLOC 4
 
 #define MPI_STATUSES_IGNORE ((MPI_Status*)1)
 #define MPI_STATUS_IGNORE ((MPI_Status*)1)

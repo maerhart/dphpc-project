@@ -19,8 +19,8 @@ add_library(gpu_mpi gpu_mpi/mpi.cu)
 target_include_directories(gpu_mpi PUBLIC gpu_mpi)
 
 add_library(gpu_main gpu_main/main.cu)
-target_include_directories(gpu_main PRIVATE ${MPI_C_INCLUDE_DIRS})
-target_link_libraries(gpu_main ${MPI_C_LIBRARIES})
+target_include_directories(gpu_main PRIVATE ${MPI_CXX_INCLUDE_DIRS})
+target_link_libraries(gpu_main ${MPI_CXX_LIBRARIES})
 
 add_library(gpu_libs INTERFACE)
 target_link_libraries(gpu_libs INTERFACE gpu_libc gpu_mpi gpu_main)

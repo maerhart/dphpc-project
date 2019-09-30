@@ -48,9 +48,9 @@ gpu_mpi_libraries=$(ls ~/code/build-gpumpi-Desktop-Debug/gpu_libs/*.a)
 cat << EOF > CMakeLists.txt 
 cmake_minimum_required(VERSION 3.12)
 
-add_subdirectory("${SCRIPTDIR}/../gpu_libs" "gpu_libs")
-
 project(examples LANGUAGES C CXX CUDA)
+
+add_subdirectory("${SCRIPTDIR}/../gpu_libs" "gpu_libs")
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 EOF

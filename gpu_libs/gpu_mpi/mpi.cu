@@ -212,7 +212,4 @@ __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status) {
 
 __device__ MPI_Comm MPI_COMM_WORLD;
 
-__device__ MPI_Datatype MPI_INT;
-__device__ MPI_Datatype MPI_DOUBLE;
-__device__ MPI_Datatype MPI_CHAR;
 
