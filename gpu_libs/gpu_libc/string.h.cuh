@@ -4,13 +4,13 @@
 #include <string.h>
 
 #define strcmp __gpu_strcmp
-__device__ int __gpu_strcmp(const char *s1, const char *s2);
+__device__ int strcmp(const char *s1, const char *s2);
 
 #define strncmp __gpu_strncmp
 __device__ int strncmp(const char *s1, const char *s2, size_t n);
 
 #define strcpy __gpu_strcpy
-__device__ char *__gpu_strcpy(char *dest, const char *src);
+__device__ char *strcpy(char *dest, const char *src);
 
 #define strstr __gpu_strstr
 __device__ char *strstr(const char *haystack, const char *needle);

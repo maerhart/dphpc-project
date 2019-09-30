@@ -6,7 +6,13 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 
 find_package(MPI REQUIRED)
 
-add_library(gpu_libc gpu_libc/stdio.cu gpu_libc/sys/time.cu)
+add_library(gpu_libc
+    gpu_libc/gpu_stdio.cu
+    gpu_libc/gpu_stdlib.cu
+    gpu_libc/gpu_string.cu
+    gpu_libc/gpu_unistd.cu
+    gpu_libc/sys/gpu_time.cu
+    )
 target_include_directories(gpu_libc PUBLIC gpu_libc)
 
 add_library(gpu_mpi gpu_mpi/mpi.cu)

@@ -18,12 +18,14 @@ __device__ extern FILE *stdout;
 #ifdef stderr
 #undef stderr
 #endif
-#define stderr __gpu_stdout
+#define stderr __gpu_stderr
 __device__ extern FILE *stderr;
 
-__device__ int fprintf (FILE * __stream, const char * __format, ...);
+#define fprintf __gpu_fprintf
+__device__ int fprintf(FILE * __stream, const char * __format, ...);
 
-__device__ int fflush (FILE *__stream);
+#define fflush __gpu_fflush
+__device__ int fflush(FILE *__stream);
 
 
 #define fopen __gpu_fopen

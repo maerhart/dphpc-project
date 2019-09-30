@@ -9,7 +9,7 @@
 
 typedef int MPI_Comm;
 typedef struct MPI_Datatype_t {} MPI_Datatype;
-typedef struct MPI_Op_t {} MPI_Op;
+typedef int MPI_Op;
 typedef struct MPI_Status_t {} MPI_Status;
 typedef struct MPI_Group_t {} MPI_Group;
 typedef struct MPI_Request_t {} MPI_Request;
@@ -78,16 +78,12 @@ typedef int MPI_Copy_function(MPI_Comm oldcomm, int keyval,
                                        void *attribute_val_out, int *flag);
 __device__ int MPI_NULL_COPY_FN(MPI_Comm oldcomm, int keyval,
                      void *extra_state, void *attribute_val_in,
-                     void *attribute_val_out, int *flag) {
-    return MPI_SUCCESS;
-}
+                     void *attribute_val_out, int *flag);
 
 typedef int MPI_Delete_function(MPI_Comm comm, int keyval,
              void *attribute_val, void *extra_state);
 __device__ int MPI_NULL_DELETE_FN(MPI_Comm comm, int keyval,
-                       void *attribute_val, void *extra_state) {
-    return MPI_SUCCESS;
-}
+                       void *attribute_val, void *extra_state);
 
 
 __device__ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
@@ -127,10 +123,10 @@ __device__ extern MPI_Datatype MPI_BYTE;
 __device__ extern MPI_Datatype MPI_DOUBLE_INT;
 __device__ extern MPI_Datatype MPI_LONG_LONG;
 
-__device__ extern MPI_Op MPI_SUM;
-__device__ extern MPI_Op MPI_MIN;
-__device__ extern MPI_Op MPI_MAX;
-__device__ extern MPI_Op MPI_MAXLOC;
+#define MPI_SUM 1
+#define MPI_MIN 2
+#define MPI_MAX 3
+#define MPI_MAXLOC 4;
 
 #define MPI_STATUSES_IGNORE ((MPI_Status*)1)
 #define MPI_STATUS_IGNORE ((MPI_Status*)1)
