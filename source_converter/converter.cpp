@@ -42,6 +42,15 @@ public :
             //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
             mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
         }
+        if (const VarDecl *var = Result.Nodes.getNodeAs<VarDecl>("globalVar")) {
+            //llvm::errs() << "GLOBAL VAR!!!\n";
+            mRewriter.InsertTextBefore(var->getSourceRange().getBegin(), "__device__ ");
+        }
+        if (const ImplicitCastExpr *ice = Result.Nodes.getNodeAs<ImplicitCastExpr>("implicitCast")) {
+            if (ice->getCastKind() == CastKind::CK_BitCast) {
+                mRewriter.InsertTextBefore(ice->getSourceRange().getBegin(), "(" + ice->getType().getAsString() + ")");
+            }
+        }
     }
 private:
     Rewriter& mRewriter;
@@ -51,6 +60,8 @@ class MyASTConsumer : public ASTConsumer {
 public:
     MyASTConsumer(Rewriter &rewriter) : mFuncConverter(rewriter) {
         mMatcher.addMatcher(functionDecl().bind("func"), &mFuncConverter);
+        mMatcher.addMatcher(varDecl(hasGlobalStorage(), unless(isStaticLocal())).bind("globalVar"), &mFuncConverter);
+        mMatcher.addMatcher(implicitCastExpr().bind("implicitCast"), &mFuncConverter);
     }
 
     void HandleTranslationUnit(ASTContext &Context) override {
@@ -66,17 +77,6 @@ private:
 class MyFrontendAction : public ASTFrontendAction {
 public:
     void EndSourceFileAction() override {
-//        SourceManager &sm = mRewriter.getSourceMgr();
-
-//        StringRef fname = sm.getFileEntryForID(sm.getMainFileID())->getName();
-//        llvm::errs() << "** EndSourceFileAction for: " << fname << "\n";
-
-//        std::error_code error_code;
-//        llvm::raw_fd_ostream outFile((fname + ".cu").str(), error_code,
-//                                     llvm::sys::fs::OF_None);
-//        mRewriter.getEditBuffer(sm.getMainFileID()).write(outFile);
-        //mRewriter.overwriteChangedFiles();
-
         for (auto I = mRewriter.buffer_begin(), E = mRewriter.buffer_end(); I != E; ++I) {
             FileID fileID = I->first;
             const FileEntry *fileEntry = mRewriter.getSourceMgr().getFileEntryForID(fileID);
@@ -85,6 +85,7 @@ public:
             // silly detection of system headers:
             // if name starts with '/' then it is system header
             if (fileName[0] == '/') {
+                //llvm::errs() << "Skip " << fileName << "\n";
                 continue; // skip system headers
             }
 

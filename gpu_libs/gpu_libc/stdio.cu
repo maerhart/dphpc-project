@@ -1,4 +1,4 @@
-#include "gpu_stdio.h"
+#include "stdio.h.cuh"
 
 
 __device__ int fprintf (FILE * __stream, const char * __format, ...) { return 0; }

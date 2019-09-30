@@ -4,8 +4,8 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-#include "gpu_mpi.h"
-#include "gpu_stdio.h"
+#include "mpi.h.cuh"
+#include "stdio.h.cuh"
 #include <math.h>
 
 __device__ double f(double);

@@ -16,6 +16,7 @@ for comp_unit in compile_commands:
     converter = os.path.expandvars(converter)
     command = [converter, comp_unit['file'], "-p", "compile_commands.json"]
     print(" ".join(command))
+    print(comp_unit['directory'])
     process = subprocess.Popen(command, cwd=comp_unit['directory'])
     process.wait()
     if process.returncode != 0:
