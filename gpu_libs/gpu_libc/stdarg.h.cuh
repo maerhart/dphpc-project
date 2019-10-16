@@ -3,6 +3,8 @@
 
 #include <stdarg.h>
 
+#include "stdio.h.cuh"
+
 #define vfprintf __gpu_vfprintf
 __device__ int vfprintf(FILE *stream, const char *format, va_list ap);
 

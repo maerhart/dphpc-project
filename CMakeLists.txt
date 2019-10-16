@@ -4,4 +4,5 @@ project(gpumpi)
 
 add_subdirectory(source_converter)
 add_subdirectory(gpu_libs)
-add_subdirectory(examples)
+#add_subdirectory(examples)
+add_subdirectory(scripts)

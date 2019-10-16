@@ -41,16 +41,20 @@ project_include_dirs=$(find . -type d | sed 's/^/-I/')
 mpi_include_dirs=$(mpicc -showme:compile | sed 's/ /\n/g' | grep '^-I')
 
 #gpu_mpi_include_dirs=$(find ~/code/gpumpi/gpu_libs/ -type d | sed 's/^/-I/')
-gpu_mpi_include_dirs=$(find ~/code/gpumpi/gpu_libs/ -type d)
+#gpu_mpi_include_dirs=$(find ~/code/gpumpi/gpu_libs/ -type d)
 
-gpu_mpi_libraries=$(ls ~/code/build-gpumpi-Desktop-Debug/gpu_libs/*.a)
+#gpu_mpi_libraries=$(ls ~/code/build-gpumpi-Desktop-Debug/gpu_libs/*.a)
 
 cat << EOF > CMakeLists.txt 
 cmake_minimum_required(VERSION 3.12)
 
 project(examples LANGUAGES C CXX CUDA)
 
-add_subdirectory("${SCRIPTDIR}/../gpu_libs" "gpu_libs")
+set(CMAKE_CUDA_FLAGS 
+    "${CMAKE_CUDA_FLAGS} \
+    -gencode arch=compute_60,code=sm_60")
+
+include(${SCRIPTDIR}/../gpu_libs/gpu_libs-exports.cmake)
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 EOF
@@ -64,7 +68,8 @@ target=target_lib_$(echo ${file} | tr '/' '_' | tr '.' '_')
 
 cat << EOF >> CMakeLists.txt
 add_library(${target} ${file})
-target_include_directories(${target} PRIVATE ${includes} ${gpu_mpi_include_dirs})
+target_include_directories(${target} PRIVATE ${includes})
+target_link_libraries(${target} PRIVATE gpu_libs)
 EOF
 
 done
@@ -79,7 +84,7 @@ target=target_bin_$(echo ${file} | tr '/' '_' | tr '.' '_')
 
 cat << EOF >> CMakeLists.txt
 add_executable(${target} ${file})
-target_include_directories(${target} PRIVATE ${includes} ${gpu_mpi_include_dirs})
+target_include_directories(${target} PRIVATE ${includes})
 target_link_libraries(${target} PRIVATE gpu_libs)
 EOF
 

@@ -1,40 +1,73 @@
 #include "mpi.h.cuh"
 
+#include "stdlib.h.cuh"
+#include "string.h.cuh"
+
+#include <cooperative_groups.h>
+
+
+using namespace cooperative_groups;
+
+
+__device__ MPI_Comm MPI_COMM_WORLD = 0;
+__device__ MPI_Comm MPI_COMM_NULL = 1;
+
+
 __device__ int MPI_Init(int *argc, char ***argv) {
+    // nothing to do
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Finalize(void) {
+    // nothing to do
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Comm_size(MPI_Comm comm, int *size) {
-    *size = 1;
+    assert(size);
+    if (comm == MPI_COMM_WORLD) {
+        auto multi_grid = this_multi_grid();
+        *size = multi_grid.size();
+    } else {
+        NOT_IMPLEMENTED
+    }
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Comm_rank(MPI_Comm comm, int *rank) {
-    *rank = 0;
+    assert(rank);
+    if (comm == MPI_COMM_WORLD) {
+        auto multi_grid = this_multi_grid();
+        *rank = multi_grid.thread_rank();
+    } else {
+        NOT_IMPLEMENTED
+    }
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
+    const char hardcoded_name[] = "GPU thread";
+    strcpy(name, hardcoded_name);
+    *resultlen = sizeof(hardcoded_name);
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
+    NOT_IMPLEMENTED
     return MPI_SUCCESS;
 }
 
 __device__ double MPI_Wtime(void) {
+    NOT_IMPLEMENTED
     return 0.;
 }
 
 __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
                           MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
 {
+    NOT_IMPLEMENTED
     return MPI_SUCCESS;
 }
 
@@ -210,6 +243,5 @@ __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status) {
 
 
 
-__device__ MPI_Comm MPI_COMM_WORLD;
 
 

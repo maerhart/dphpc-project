@@ -12,7 +12,7 @@ for comp_unit in compile_commands:
     
     ### run converter for each file
 
-    converter = "$HOME/code/build-gpumpi-Desktop-Debug/_deps/llvm-build/bin/converter"
+    converter = "$SCRIPTDIR/../_deps/llvm-build/bin/converter"
     converter = os.path.expandvars(converter)
     command = [converter, comp_unit['file'], "-p", "compile_commands.json"]
     print(" ".join(command))
@@ -22,4 +22,5 @@ for comp_unit in compile_commands:
     if process.returncode != 0:
         raise Exception("failed")
     
+
 

@@ -2,25 +2,32 @@ cmake_minimum_required(VERSION 3.12)
 
 project(gpu_libs LANGUAGES C CXX CUDA)
 
-set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+set(CMAKE_INCLUDE_CURRENT_DIR ON) # all subdirs will be automatically added to include path of targets
+set(CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE ON) # all subdirs will be automatically added to include path of dependencies
 
-find_package(MPI REQUIRED)
+set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) # prevents mess with host/device linking of the functions with the same name
 
-add_library(gpu_libc
-    gpu_libc/gpu_stdio.cu
-    gpu_libc/gpu_stdlib.cu
-    gpu_libc/gpu_string.cu
-    gpu_libc/gpu_unistd.cu
-    gpu_libc/sys/gpu_time.cu
-    )
-target_include_directories(gpu_libc PUBLIC gpu_libc)
+# enable cooperative groups (compute capability >= 6.0)
+# enable system-wide atomics: atomicCAS_system (compute capability >= 6.0)
+set(CMAKE_CUDA_FLAGS 
+    "${CMAKE_CUDA_FLAGS} \
+    -gencode arch=compute_60,code=sm_60")
 
-add_library(gpu_mpi gpu_mpi/mpi.cu)
-target_include_directories(gpu_mpi PUBLIC gpu_mpi)
+add_subdirectory(managed_memory)
 
-add_library(gpu_main gpu_main/main.cu)
-target_include_directories(gpu_main PRIVATE ${MPI_CXX_INCLUDE_DIRS})
-target_link_libraries(gpu_main ${MPI_CXX_LIBRARIES})
+add_subdirectory(gpu_libc)
+add_subdirectory(gpu_mpi)
+add_subdirectory(gpu_main)
+add_subdirectory(gpumpi_common)
 
 add_library(gpu_libs INTERFACE)
 target_link_libraries(gpu_libs INTERFACE gpu_libc gpu_mpi gpu_main)
+
+export(TARGETS 
+    gpu_libs
+    gpu_libc
+    gpu_mpi
+    gpu_main
+    gpumpi_common
+    managed_memory
+    APPEND FILE gpu_libs-exports.cmake)

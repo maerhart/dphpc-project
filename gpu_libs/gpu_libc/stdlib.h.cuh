@@ -3,6 +3,8 @@
 
 #include <stdlib.h>
 
+#include "assert.h.cuh"
+
 #define qsort __gpu_qsort
 __device__ void qsort(void *base, size_t nmemb, size_t size,
                   int (*compar)(const void *, const void *));

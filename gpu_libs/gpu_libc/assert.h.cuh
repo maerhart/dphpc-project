@@ -3,8 +3,7 @@
 
 #include <assert.h>
 
-
-
+#define NOT_IMPLEMENTED assert(0);
 
 
 #endif // ASSERT_H_CUH

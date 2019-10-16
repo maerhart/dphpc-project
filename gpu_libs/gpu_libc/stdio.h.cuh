@@ -7,7 +7,7 @@
 #undef FILE
 #endif
 #define FILE __GPU_FILE
-typedef struct FILE_t {} FILE;
+typedef int FILE;
 
 #ifdef stdout
 #undef stdout

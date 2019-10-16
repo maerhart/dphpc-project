@@ -3,7 +3,6 @@
 // functions on the GPU should use gpu_mpi instead.
 
 #include <cuda.h>
-#include <mpi.h>
 
 #include <stdarg.h>
 
