@@ -51,7 +51,7 @@ __device__ void p2pSendDeviceToDevice(void* ptr, int size, int srcThread, int ds
 
 }
 
-#define REPETITIONS 10
+#define REPETITIONS 100
 
 __global__ void kernelBenchmarkMultiDevice(size_t dataSize, char* deviceSrcData, char* deviceDstData, int peakClkKHz,
                                           volatile char* managedBuffer, volatile int* managedBufferOwner)

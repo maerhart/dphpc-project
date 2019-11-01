@@ -90,7 +90,7 @@ __host__ __device__ void p2pSendDeviceToHost(void* ptr, int size, int deviceThre
 #endif
 }
 
-#define REPETITIONS 10
+#define REPETITIONS 100
 
 __global__ void kernelBenchmarkHostDevice(size_t dataSize, char* deviceSrcData, char* deviceDstData, int peakClkKHz, 
                                           volatile char* managedBuffer, volatile int* managedBufferOwner)

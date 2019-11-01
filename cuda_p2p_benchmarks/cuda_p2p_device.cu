@@ -65,7 +65,7 @@ __global__ void kernelBenchmarkDevice(size_t dataSize, char* deviceSrcData, char
         data = deviceDstData;
     }
     
-    int repetitions = 10;
+    int repetitions = 100;
     
     auto t1 = clock64();
 

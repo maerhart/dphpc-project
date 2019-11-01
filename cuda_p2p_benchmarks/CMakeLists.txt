@@ -25,3 +25,6 @@ add_executable(cuda_p2p_block cuda_p2p_block.cu)
 add_executable(cuda_p2p_device cuda_p2p_device.cu)
 add_executable(cuda_p2p_host_device cuda_p2p_host_device.cu)
 add_executable(cuda_p2p_multi_device cuda_p2p_multi_device.cu)
+
+
+configure_file(run_benchmarks.sh run_benchmarks.sh COPYONLY)
