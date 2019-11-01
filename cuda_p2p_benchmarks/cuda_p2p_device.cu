@@ -34,13 +34,13 @@ __device__ void p2pSendDevice(void* data, size_t dataSize, int srcThread, int ds
             memcpy((void*)globalBufferData, data, dataSize);
             __threadfence();
             globalBufferOwner = dstThread;
-            __threadfence();
+            //__threadfence();
             done = true;
         } else if (rank == dstThread && globalBufferOwner == dstThread) {
             memcpy(data, (void*)globalBufferData, dataSize);
             __threadfence();
             globalBufferOwner = srcThread;
-            __threadfence();
+            //__threadfence();
             done = true;
         }
     }
@@ -82,7 +82,7 @@ __global__ void kernelBenchmarkDevice(size_t dataSize, char* deviceSrcData, char
         double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
         double timePerSend = totalTime / repetitions / 2;
         double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg Mb/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
+        printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
     }
     
     assert(globalBufferData);

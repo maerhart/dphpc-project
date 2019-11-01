@@ -86,7 +86,7 @@ __global__ void kernelBenchmarkWarp(size_t dataSize, char* deviceSrcData, char* 
         double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
         double timePerSend = totalTime / repetitions / 2;
         double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg Mb/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
+        printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
     }
 }
 

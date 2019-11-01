@@ -9,6 +9,9 @@
 using namespace cooperative_groups;
 using namespace std;
 
+#define MANAGED_OWNER_NONE -1
+#define MANAGED_OWNER_HOST -2
+
 #define CUDA_CHECK(expr) do {\
     cudaError_t err = (expr);\
     if (err != cudaSuccess) {\
@@ -17,64 +20,97 @@ using namespace std;
     }\
 } while(0)
 
-__host__ __device__ void p2pSendHostDevice(void* ptr, int size, int srcThread, int dstThread) {
-    int rank = this_multi_grid().thread_rank();
-    
-    if (rank != srcThread && rank != dstThread) return;
-    
-    int bytesWritten = 0;
-        
-    while (bytesWritten < size) {
-        int bytesLeft = size - bytesWritten;
-        int bytesToWrite = bytesLeft > ManagedBufferSize ? ManagedBufferSize : bytesLeft;
-        if (gManagedSrcThreadOwnsBuffer) {
-            if (srcThread == rank) {
-                memcpy((void*)gManagedBuffer, ((char*)ptr) + bytesWritten, bytesToWrite);
-                bytesWritten += bytesToWrite;
-                __threadfence_system();
-                gManagedSrcThreadOwnsBuffer = false;
-            }
-        } else {
-            if (dstThread == rank) {
-                memcpy(((char*)ptr) + bytesWritten, (void*)gManagedBuffer, bytesToWrite);
-                bytesWritten += bytesToWrite;
-                __threadfence_system();
-                gManagedSrcThreadOwnsBuffer = true;
-            }
-        }
+__host__ __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
+{
+    volatile char *d = (char*) dst;
+    volatile char *s = (char*) src;
+    for (size_t i = 0; i < n; i++) {
+        d[i] = s[i];
     }
 }
 
+__host__ __device__ void p2pSendHostToDevice(void* ptr, int size, int deviceThread,
+    volatile char* managedBuffer, volatile int* managedBufferOwner)
+{
+#if defined(__CUDA_ARCH__)
+    // step 2
+    
+    int rank = this_multi_grid().thread_rank();
+    if (rank != deviceThread) return;
+    
+    //printf("p2pSendHostToDevice device wait start\n");
+    while (*managedBufferOwner != deviceThread) {}
+    //printf("p2pSendHostToDevice device wait finish\n");
+    
+    memcpy_volatile(ptr, managedBuffer, size);
+    __threadfence_system();
+    *managedBufferOwner = MANAGED_OWNER_NONE;
+#else
+    // step 1
+    
+    //printf("p2pSendHostToDevice host wait start\n");
+    while (*managedBufferOwner != MANAGED_OWNER_NONE) {}
+    //printf("p2pSendHostToDevice host wait finish\n");
+    
+    memcpy_volatile(managedBuffer, ptr, size);
+    __sync_synchronize();
+    
+    *managedBufferOwner = deviceThread;
+#endif
+}
+
+__host__ __device__ void p2pSendDeviceToHost(void* ptr, int size, int deviceThread,
+    volatile char* managedBuffer, volatile int* managedBufferOwner)
+{
+#if defined(__CUDA_ARCH__)
+    // step 1
+    
+    int rank = this_multi_grid().thread_rank();
+    if (rank != deviceThread) return;
+    
+    //printf("p2pSendDeviceToHost device wait start\n");
+    while (*managedBufferOwner != MANAGED_OWNER_NONE) {}
+    //printf("p2pSendDeviceToHost device wait finish\n");
+
+    memcpy_volatile(managedBuffer, ptr, size);
+    __threadfence_system();
+    *managedBufferOwner = MANAGED_OWNER_HOST;
+#else
+    // step 2
+    
+    //printf("p2pSendDeviceToHost host wait start\n");
+    while (*managedBufferOwner != MANAGED_OWNER_HOST) {}
+    //printf("p2pSendDeviceToHost host wait finish\n");
+    
+    memcpy_volatile(ptr, managedBuffer, size);
+    __sync_synchronize();
+    
+    *managedBufferOwner = MANAGED_OWNER_NONE;
+    
+#endif
+}
+
+#define REPETITIONS 10
+
 __global__ void kernelBenchmarkHostDevice(size_t dataSize, char* deviceSrcData, char* deviceDstData, int peakClkKHz, 
-                                          char* volatile managedBuffer, bool* volatile managedBufferOwnedByHost) 
+                                          volatile char* managedBuffer, volatile int* managedBufferOwner) 
 {
     int size = this_grid().size();
     int rank = this_grid().thread_rank(); // or this_multi_grid().grid_rank()
 
-    int repetitions = 10;
-    
-    void* data = nullptr;
-    if (rank == 0) {
-        data = deviceSrcData;
-    } else {
-        data = deviceDstData;
-    }
-    
     auto t1 = clock64();
     
-    for (int r = 0; r < repetitions; r++) {
-        p2pSendDevice(data, dataSize, /*srcThread*/ 0, /*dstThread*/ 1);
-        p2pSendDevice(data, dataSize, /*srcThread*/ 1, /*dstThread*/ 0);
+    for (int r = 0; r < REPETITIONS; r++) {
+        p2pSendDeviceToHost(deviceSrcData, dataSize, 0, managedBuffer, managedBufferOwner);
+        p2pSendHostToDevice(deviceDstData, dataSize, 0, managedBuffer, managedBufferOwner);
     }
     
     auto t2 = clock64();
     
-    if (this_grid().thread_rank() == 0) {
-        double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
-        double timePerSend = totalTime / repetitions / 2;
-        double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg Mb/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
-    }
+    double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
+    double timePerSend = totalTime / REPETITIONS / 2;
+    double bandwidth = dataSize / timePerSend;
+    printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
 }
 
 
@@ -87,7 +123,7 @@ int main() {
     CUDA_CHECK(cudaDeviceGetAttribute(&peakClkKHz, cudaDevAttrClockRate, /*device = */0));
     assert(peakClkKHz > 0);
     
-    __device__ void* volatile managedBufferData;
+
     
     for (size_t dataSize = 1; dataSize < (1 << 23); dataSize *= 2) {
         char* deviceSrcData = nullptr;
@@ -99,8 +135,9 @@ int main() {
         char* managedBuffer = nullptr;
         CUDA_CHECK(cudaMallocManaged(&managedBuffer, dataSize));
         
-        bool* managedBufferOwnedByHost = nullptr;
-        CUDA_CHECK(cudaMallocManaged(&managedBufferOwnedByHost, sizeof(bool)));
+        int* managedBufferOwner = nullptr;
+        CUDA_CHECK(cudaMallocManaged(&managedBufferOwner, sizeof(int)));
+        *managedBufferOwner = MANAGED_OWNER_NONE;
         
         char* hostSrcData = (char*) calloc(dataSize, 1);
         assert(hostSrcData);
@@ -111,16 +148,20 @@ int main() {
         
         CUDA_CHECK(cudaMemcpy(deviceSrcData, hostSrcData, dataSize, cudaMemcpyHostToDevice));
         
-        dim3 blocksPerGrid = 2;
+        dim3 blocksPerGrid = 1;
         dim3 threadsPerBlock = 1;
         
         void* params[] = {
             (void*)&dataSize,
             (void*)&deviceSrcData,
             (void*)&deviceDstData,
-            (void*)&peakClkKHz
+            (void*)&peakClkKHz,
+            (void*)&managedBuffer,
+            (void*)&managedBufferOwner
         };
         
+        void* hostTempBuffer = calloc(dataSize, 1);
+             
         CUDA_CHECK(cudaLaunchCooperativeKernel(
             /*const T *func*/(void*) kernelBenchmarkHostDevice,
             /*dim3 gridDim*/blocksPerGrid,
@@ -132,7 +173,10 @@ int main() {
         
         CUDA_CHECK(cudaPeekAtLastError());
         
-        while () {
+        for (int r = 0; r < REPETITIONS; r++) {
+            p2pSendDeviceToHost(hostTempBuffer, dataSize, 0, managedBuffer, managedBufferOwner);
+            p2pSendHostToDevice(hostTempBuffer, dataSize, 0, managedBuffer, managedBufferOwner);
+        }
         
         CUDA_CHECK(cudaDeviceSynchronize());
         
@@ -144,6 +188,8 @@ int main() {
                 abort();
             }
         }
+        
+        free(hostTempBuffer);
         
         free(hostDstData);
         free(hostSrcData);
