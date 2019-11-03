@@ -10,12 +10,13 @@ for (level in c("warp", "block", "device", "multi_device", "host_device")) {
   colnames(df)[colnames(df) == 'V7'] <- 'Time'
   colnames(df)[colnames(df) == 'V11'] <- 'Bandwidth'
   df[,'level'] = level
-  df[,'latency'] = df[0:1, 'Time']
+  df[,'latency'] = df[0:1, 'Time'] - 1 / tail(df, 1)['Bandwidth']
   all_data = rbind(all_data, df)
 }
 
+
 plot = ggplot(data=all_data, aes(x=Size, y=Bandwidth, colour=paste(level,"latency:",latency,"us")))
-plot = plot + geom_line() + scale_x_log10() + xlab("Size, B") + ylab("Bandwidth, MB/s")
+plot = plot + geom_line() + scale_x_log10() + xlab("Size, B") + ylab("Bandwidth, MB/s") + labs(color='level') 
 plot
 ggsave("bandwidths.pdf", plot = plot)
 
