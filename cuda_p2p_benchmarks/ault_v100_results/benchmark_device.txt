@@ -1,22 +1,22 @@
-dataSize = 1 B, time = 1.63208 us, bandwidth = 0.612717 MB/s 
-dataSize = 2 B, time = 1.69551 us, bandwidth = 1.17959 MB/s 
-dataSize = 4 B, time = 1.83064 us, bandwidth = 2.18502 MB/s 
-dataSize = 8 B, time = 2.18366 us, bandwidth = 3.66358 MB/s 
-dataSize = 16 B, time = 2.84236 us, bandwidth = 5.62912 MB/s 
-dataSize = 32 B, time = 4.22401 us, bandwidth = 7.57573 MB/s 
-dataSize = 64 B, time = 7.19991 us, bandwidth = 8.88901 MB/s 
-dataSize = 128 B, time = 13.1936 us, bandwidth = 9.70168 MB/s 
-dataSize = 256 B, time = 25.206 us, bandwidth = 10.1563 MB/s 
-dataSize = 512 B, time = 49.1621 us, bandwidth = 10.4145 MB/s 
-dataSize = 1024 B, time = 97.1489 us, bandwidth = 10.5405 MB/s 
-dataSize = 2048 B, time = 193.287 us, bandwidth = 10.5957 MB/s 
-dataSize = 4096 B, time = 384.818 us, bandwidth = 10.644 MB/s 
-dataSize = 8192 B, time = 765.361 us, bandwidth = 10.7034 MB/s 
-dataSize = 16384 B, time = 1528.9 us, bandwidth = 10.7162 MB/s 
-dataSize = 32768 B, time = 3061.95 us, bandwidth = 10.7017 MB/s 
-dataSize = 65536 B, time = 6120.59 us, bandwidth = 10.7075 MB/s 
-dataSize = 131072 B, time = 12239.8 us, bandwidth = 10.7087 MB/s 
-dataSize = 262144 B, time = 24476.2 us, bandwidth = 10.7101 MB/s 
-dataSize = 524288 B, time = 48953.9 us, bandwidth = 10.7098 MB/s 
-dataSize = 1048576 B, time = 97907.6 us, bandwidth = 10.7099 MB/s 
+dataSize = 1 B, time = 3.20446 ( +- 0.125056 ) us, bandwidth = 0.625031 ( +- 0.02313 ) MB/s 
+dataSize = 2 B, time = 3.36583 ( +- 0.159016 ) us, bandwidth = 1.19081 ( +- 0.0510922 ) MB/s 
+dataSize = 4 B, time = 3.58278 ( +- 0.0867567 ) us, bandwidth = 2.23425 ( +- 0.0556633 ) MB/s 
+dataSize = 8 B, time = 4.13725 ( +- 0.171555 ) us, bandwidth = 3.87384 ( +- 0.157582 ) MB/s 
+dataSize = 16 B, time = 5.50864 ( +- 0.124429 ) us, bandwidth = 5.81203 ( +- 0.1317 ) MB/s 
+dataSize = 32 B, time = 8.25918 ( +- 0.195276 ) us, bandwidth = 7.75341 ( +- 0.188818 ) MB/s 
+dataSize = 64 B, time = 14.2115 ( +- 0.284647 ) us, bandwidth = 9.01078 ( +- 0.199476 ) MB/s 
+dataSize = 128 B, time = 26.1739 ( +- 0.539311 ) us, bandwidth = 9.78589 ( +- 0.249686 ) MB/s 
+dataSize = 256 B, time = 50.2108 ( +- 1.14306 ) us, bandwidth = 10.2038 ( +- 0.298241 ) MB/s 
+dataSize = 512 B, time = 98.1678 ( +- 2.31725 ) us, bandwidth = 10.4387 ( +- 0.320687 ) MB/s 
+dataSize = 1024 B, time = 194.092 ( +- 4.71963 ) us, bandwidth = 10.5599 ( +- 0.337601 ) MB/s 
+dataSize = 2048 B, time = 386.273 ( +- 9.44151 ) us, bandwidth = 10.6122 ( +- 0.341589 ) MB/s 
+dataSize = 4096 B, time = 769.162 ( +- 18.9857 ) us, bandwidth = 10.6591 ( +- 0.347597 ) MB/s 
+dataSize = 8192 B, time = 1531.01 ( +- 37.7218 ) us, bandwidth = 10.71 ( +- 0.348413 ) MB/s 
+dataSize = 16384 B, time = 3059.52 ( +- 75.8952 ) us, bandwidth = 10.7189 ( +- 0.351859 ) MB/s 
+dataSize = 32768 B, time = 6119.34 ( +- 151.917 ) us, bandwidth = 10.7184 ( +- 0.35221 ) MB/s 
+dataSize = 65536 B, time = 12233.7 ( +- 303.745 ) us, bandwidth = 10.7227 ( +- 0.352406 ) MB/s 
+dataSize = 131072 B, time = 24463.8 ( +- 607.854 ) us, bandwidth = 10.7243 ( +- 0.352808 ) MB/s 
+dataSize = 262144 B, time = 48922.8 ( +- 1215.26 ) us, bandwidth = 10.7254 ( +- 0.352715 ) MB/s 
+dataSize = 524288 B, time = 97829.6 ( +- 2431.12 ) us, bandwidth = 10.7272 ( +- 0.352966 ) MB/s 
+dataSize = 1048576 B, time = 195673 ( +- 4862.82 ) us, bandwidth = 10.7264 ( +- 0.352965 ) MB/s 
 Exit

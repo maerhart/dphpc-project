@@ -51,6 +51,7 @@ __device__ void p2pSendDeviceToDevice(void* ptr, int size, int srcThread, int ds
 
 }
 
+#define PREPARATION 20
 #define REPETITIONS 100
 
 __global__ void kernelBenchmarkMultiDevice(size_t dataSize, char* deviceSrcData, char* deviceDstData, int peakClkKHz,
@@ -67,21 +68,50 @@ __global__ void kernelBenchmarkMultiDevice(size_t dataSize, char* deviceSrcData,
         data = deviceDstData;
     }
 
+    double E_T = 0;
+    double E_T2 = 0;
 
-    auto t1 = clock64();
+    double E_BW = 0;
+    double E_BW2 = 0;
 
-    for (int r = 0; r < REPETITIONS; r++) {
+    int dataPerSendRecv = 2 * dataSize;
+
+    for (int r = 0; r < PREPARATION; r++) {
         p2pSendDeviceToDevice(data, dataSize, 0, 1, managedBuffer, managedBufferOwner);
         p2pSendDeviceToDevice(data, dataSize, 1, 0, managedBuffer, managedBufferOwner);
     }
 
-    auto t2 = clock64();
+    for (int r = 0; r < REPETITIONS; r++) {
+        auto t1 = clock64();
+        p2pSendDeviceToDevice(data, dataSize, 0, 1, managedBuffer, managedBufferOwner);
+        p2pSendDeviceToDevice(data, dataSize, 1, 0, managedBuffer, managedBufferOwner);
+        auto t2 = clock64();
+
+        double dt = (t2 - t1) * 0.001 / peakClkKHz;
+        double bw = dataPerSendRecv / dt;
+
+        E_T += dt;
+        E_T2 += dt * dt;
+
+        E_BW += bw;
+        E_BW2 += bw * bw;
+    }
+
+    E_T /= REPETITIONS;
+    E_T2 /= REPETITIONS;
+
+    E_BW /= REPETITIONS;
+    E_BW2 /= REPETITIONS;
+
+    double timePerSendRecv = E_T;
+    double timePerSendRecvErr = sqrt(E_T2 - E_T * E_T);
+    double bandwidth = E_BW;
+    double bandwidthErr = sqrt(E_BW2 - E_BW * E_BW);
+
 
     if (rank == 0) {
-        double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
-        double timePerSend = totalTime / REPETITIONS / 2;
-        double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
+        printf("dataSize = %d B, time = %lg ( +- %lg ) us, bandwidth = %lg ( +- %lg ) MB/s \n",
+               int(dataSize), timePerSendRecv * 1e6, timePerSendRecvErr * 1e6, bandwidth / 1e6, bandwidthErr / 1e6);
     }
 }
 
@@ -115,7 +145,7 @@ int main() {
         launchParamsList[i].stream = cudaStreams[i];
     }
 
-    for (size_t dataSize = 1; dataSize < (1 << 23); dataSize *= 2) {
+    for (size_t dataSize = 1; dataSize < (1 << 21); dataSize *= 2) {
         char* deviceSrcData = nullptr;
         CUDA_CHECK(cudaSetDevice(0));
         CUDA_CHECK(cudaMalloc(&deviceSrcData, dataSize));

@@ -21,12 +21,11 @@ extern __shared__ void* sharedBuffer[];
 #define SHARED_BUFFER_OWNER (((int*)sharedBuffer)[0])
 #define SHARED_BUFFER_DATA (void*)(&((int*)sharedBuffer)[1])
 
-
 __device__ void p2pSendWarp(void* data, size_t dataSize, int srcThread, int dstThread) {
     int rank = this_thread_block().thread_rank();
     
     if (srcThread != rank && dstThread != rank) return;
-    
+
     bool done = false;
     while (!done) {
         if (srcThread == rank) {
@@ -72,21 +71,45 @@ __global__ void kernelBenchmarkWarp(size_t dataSize, char* deviceSrcData, char* 
     }
     
     int repetitions = 100;
-    
-    auto t1 = clock64();
 
+    double E_T = 0;
+    double E_T2 = 0;
+
+    double E_BW = 0;
+    double E_BW2 = 0;
+
+    int dataPerSendRecv = 2 * dataSize;
+    
     for (int r = 0; r < repetitions; r++) {
+        auto t1 = clock64();
         p2pSendWarp(data, dataSize, /*srcThread*/ 0, /*dstThread*/ 1);
         p2pSendWarp(data, dataSize, /*srcThread*/ 1, /*dstThread*/ 0);
+        auto t2 = clock64();
+
+        double dt = (t2 - t1) * 0.001 / peakClkKHz;
+        double bw = dataPerSendRecv / dt;
+
+        E_T += dt;
+        E_T2 += dt * dt;
+
+        E_BW += bw;
+        E_BW2 += bw * bw;
     }
     
-    auto t2 = clock64();
-    
+    E_T /= repetitions;
+    E_T2 /= repetitions;
+
+    E_BW /= repetitions;
+    E_BW2 /= repetitions;
+
+    double timePerSendRecv = E_T;
+    double timePerSendRecvErr = sqrt(E_T2 - E_T * E_T);
+    double bandwidth = E_BW;
+    double bandwidthErr = sqrt(E_BW2 - E_BW * E_BW);
+
     if (this_thread_block().thread_rank() == 0) {
-        double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
-        double timePerSend = totalTime / repetitions / 2;
-        double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
+        printf("dataSize = %d B, time = %lg ( +- %lg ) us, bandwidth = %lg ( +- %lg ) MB/s \n",
+               int(dataSize), timePerSendRecv * 1e6, timePerSendRecvErr * 1e6, bandwidth / 1e6, bandwidthErr / 1e6);
     }
 }
 

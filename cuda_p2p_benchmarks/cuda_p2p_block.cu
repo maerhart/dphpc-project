@@ -54,7 +54,7 @@ __device__ void p2pSendBlock(void* data, size_t dataSize, int srcThread, int dst
 }
 
 __global__ void kernelBenchmarkBlock(size_t dataSize, char* deviceSrcData, char* deviceDstData, int peakClkKHz) {
-    
+
     coalesced_group warp = coalesced_threads();
     assert(warp.size() == 32);
     if (warp.thread_rank() != 0) return;
@@ -74,22 +74,44 @@ __global__ void kernelBenchmarkBlock(size_t dataSize, char* deviceSrcData, char*
     
     int repetitions = 100;
     
-    auto t1 = clock64();
+    double E_T = 0;
+    double E_T2 = 0;
 
-    
-    
+    double E_BW = 0;
+    double E_BW2 = 0;
+
+    int dataPerSendRecv = 2 * dataSize;
+
     for (int r = 0; r < repetitions; r++) {
+        auto t1 = clock64();
         p2pSendBlock(data, dataSize, /*srcThread*/ 0, /*dstThread*/ 32);
         p2pSendBlock(data, dataSize, /*srcThread*/ 32, /*dstThread*/ 0);
+        auto t2 = clock64();
+
+        double dt = (t2 - t1) * 0.001 / peakClkKHz;
+        double bw = dataPerSendRecv / dt;
+
+        E_T += dt;
+        E_T2 += dt * dt;
+
+        E_BW += bw;
+        E_BW2 += bw * bw;
     }
-    
-    auto t2 = clock64();
+
+    E_T /= repetitions;
+    E_T2 /= repetitions;
+
+    E_BW /= repetitions;
+    E_BW2 /= repetitions;
+
+    double timePerSendRecv = E_T;
+    double timePerSendRecvErr = sqrt(E_T2 - E_T * E_T);
+    double bandwidth = E_BW;
+    double bandwidthErr = sqrt(E_BW2 - E_BW * E_BW);
     
     if (this_thread_block().thread_rank() == 0) {
-        double totalTime = (t2 - t1) * 0.001 / peakClkKHz;
-        double timePerSend = totalTime / repetitions / 2;
-        double bandwidth = dataSize / timePerSend;
-        printf("dataSize = %d B, time = %lg us, bandwidth = %lg MB/s \n", int(dataSize), timePerSend * 1e6, bandwidth / 1e6);
+        printf("dataSize = %d B, time = %lg ( +- %lg ) us, bandwidth = %lg ( +- %lg ) MB/s \n",
+               int(dataSize), timePerSendRecv * 1e6, timePerSendRecvErr * 1e6, bandwidth / 1e6, bandwidthErr / 1e6);
     }
 }
 
