@@ -8,6 +8,10 @@
 #include <cuda.h>
 #include <cooperative_groups.h>
 
+#define LOG(fmt, ...) printf("Thread %d " __FILE__ ":%d " fmt "\n", cg::this_grid().thread_rank(), __LINE__,## __VA_ARGS__)
+
+#define ALIVE LOG("STILL ALIVE!");
+
 #define CUDA_CHECK(expr) do {\
     cudaError_t err = (expr);\
     if (err != cudaSuccess) {\
@@ -18,15 +22,17 @@
 
 __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
 {
-    volatile char *d = (char*) dst;
-    volatile char *s = (char*) src;
+    volatile char *d = (volatile char*) dst;
+    volatile char *s = (volatile char*) src;
     for (size_t i = 0; i < n; i++) {
         d[i] = s[i];
-    }   
+    }
 }
 
+namespace cg = cooperative_groups;
+
 namespace CudaMPI {
-    
+
 template <typename T>
 class Vector {
 public:
@@ -133,14 +139,23 @@ public:
         for (int i = 0; i < mSize; i++) {
             mData[i].~T();
         }
-        CUDA_CHECK(cudaFree(mData));
+        CUDA_CHECK(cudaFree((T*)mData));
     }
-    
-    __host__ __device__ T& operator[] (int index) {
-        return mData[index];
+
+    // Can't support [] as in usual std::vector, because
+    // all memory accesses to managed memory should be volatile.
+
+    __host__ __device__ void set(int index, const T& value) volatile {
+        assert(0 <= index && index < mSize);
+        ((volatile T*)mData)[index] = value;
     }
-    
-    __host__ __device__ int size() const { return mSize; }
+
+    __host__ __device__ volatile T* get(int index) volatile {
+        assert(0 <= index && index < mSize);
+        return (volatile T*)(mData + index);
+    }
+
+    __host__ __device__ int size() const volatile { return mSize; }
 
 private:
     int mSize;
@@ -281,34 +296,6 @@ public:
 
 };
 
-
-
-template <typename T>
-struct LocalVector {
-    template <typename... Args>
-    LocalVector(int size, Args... args) : size(size)
-    {
-        CUDA_CHECK(cudaMalloc(&data, size * sizeof(T)));
-        for (int i = 0; i < size; i++) {
-            new (&data[i]) T(args...);
-        }
-    }
-
-    ~LocalVector() {
-        for (int i = 0; i < size; i++) {
-            data[i].~T();
-        }
-        CUDA_CHECK(cudaFree(data));
-    }
-
-    __host__ __device__ T& operator[] (int index) {
-        return data[index];
-    }
-
-    int size;
-    T* data;
-};
-
 struct CircularBufferState {
     __host__ __device__ CircularBufferState(int size)
         : size(size)
@@ -318,11 +305,11 @@ struct CircularBufferState {
     {
     }
 
-    __host__ __device__ bool empty() const { return used == 0; }
-    __host__ __device__ bool full() const { return used == size; }
+    __host__ __device__ bool empty() const volatile { return used == 0; }
+    __host__ __device__ bool full() const volatile { return used == size; }
 
     // reserve and return position for new element at the tail of queue
-    __host__ __device__ int push() {
+    __host__ __device__ int push() volatile {
         assert(!full());
         used += 1;
         int position = tail;
@@ -331,7 +318,7 @@ struct CircularBufferState {
     }
 
     // release and return (released) position of element from the head of queue
-    __host__ __device__ int pop() {
+    __host__ __device__ int pop() volatile {
         assert(!empty());
         used -= 1;
         int position = head;
@@ -358,25 +345,25 @@ public:
     ManagedMemoryLock() : locked(0) {
     }
 
-    __host__ __device__ bool tryLock() {
+    __host__ __device__ bool tryLock() volatile {
         // Since CAS returns old value, the operation is successful
         // if an old value (second arg of CAS) equal to the return value
         bool success = false;
         #if defined(__CUDA_ARCH__)
-            success = (0 == atomicCAS_system(&locked, 0, 1));
+            success = (0 == atomicCAS_system((unsigned*)&locked, 0, 1));
         #else
-            success = (0 == __sync_val_compare_and_swap(&locked, 0, 1));
+            success = (0 == __sync_val_compare_and_swap((unsigned*)&locked, 0, 1));
         #endif
         return success;
     }
 
-    __host__ __device__ void lock() {
+    __host__ __device__ void lock() volatile {
         while (!tryLock()) {}
     }
 
-    __host__ __device__ void unlock() {
+    __host__ __device__ void unlock() volatile {
         cudaGlobalFence();
-        *((volatile unsigned*)&locked) = 0;
+        locked = 0;
     }
 private:
     unsigned locked;
@@ -393,44 +380,48 @@ public:
     {
     }
     
-    __host__ __device__ int size() {
+    __host__ __device__ int size() volatile {
         return bufferState.size;
     }
     
-    __host__ __device__ bool empty() {
+    __host__ __device__ int used() volatile {
+        return bufferState.used;
+    }
+    
+    __host__ __device__ bool empty() volatile {
         return bufferState.empty();
     }
     
-    __host__ __device__ int full() {
+    __host__ __device__ int full() volatile {
         return bufferState.full();
     }
 
-    __host__ __device__ void push(const T& md) {
+    __host__ __device__ void push(const T& md) volatile {
         int position = bufferState.push();
-        messages[position] = md;
-        active[position] = true;
+        messages.set(position, md);
+        active.set(position, true);
     }
     
-    __host__ __device__ void pop(T* elem) {
-        int index = elem - &messages[0];
-        active[index] = false;
-        while (!active[index] && !bufferState.empty()) {
+    __host__ __device__ void pop(volatile T* elem) volatile {
+        int index = elem - messages.get(0);
+        active.set(index, false);
+        while (!*active.get(index) && !bufferState.empty()) {
             index = bufferState.pop();
         }
     }
 
-    __host__ __device__ T* head() {
+    __host__ __device__ volatile T* head() volatile {
         if (bufferState.empty()) return nullptr;
-        return &messages[bufferState.head];
+        return messages.get(bufferState.head);
     }
 
-    __host__ __device__ T* next(T* elem) {
-        int index = elem - &messages[0];
+    __host__ __device__ volatile T* next(volatile T* elem) volatile {
+        int index = elem - messages.get(0);
         int nextIndex;
         while (true) {
             nextIndex = (index + 1) % messages.size();
             if (nextIndex == bufferState.tail) return nullptr;
-            if (active[nextIndex]) return &messages[nextIndex];
+            if (*active.get(nextIndex)) return messages.get(nextIndex);
         }
     }
 
@@ -438,38 +429,6 @@ private:
     ManagedVector<T> messages;
     ManagedVector<bool> active;
     CircularBufferState bufferState;
-};
-
-struct ProcessMessageQueues {
-public:
-    ProcessMessageQueues(int messageQueueSize)
-//         : unexpected(messageQueueSize)
-//         , receive(messageQueueSize)
-    {
-
-    }
-
-    __host__ __device__ void lock() {
-        memoryLock.lock();
-    }
-
-    __host__ __device__ void unlock() {
-        memoryLock.unlock();
-    }
-
-//     CircularQueue<MessageEnvelope> unexpected;
-//     CircularQueue<MessageEnvelope> receive;
-
-private:
-    ManagedMemoryLock memoryLock;
-};
-
-struct SharedProcessQueues {
-    SharedProcessQueues(int numProcesses, int messageQueueSize)
-        : messageQueues(numProcesses, messageQueueSize)
-    {
-    }
-    ManagedVector<ProcessMessageQueues> messageQueues;
 };
 
 struct MemoryFragment {
@@ -490,33 +449,6 @@ struct MemoryFragment {
     ManagedVector<char> data;
 };
 
-struct MessageEnvelope {
-    enum {
-        ANY_SOURCE = -1,
-        ANY_TAG = -1
-    };
-
-    __host__ __device__ bool match(int source, int destination, int tag, int communicator) {
-        if (source != mSource && mSource != ANY_SOURCE && source != ANY_SOURCE) {
-            return false;
-        }
-        if (mDestination != destination) return false;
-        if (mTag != tag) return false;
-        if (mCommunicator != communicator) return false;
-        return true;
-    }
-
-    int mSource;
-    int mDestination;
-    int mTag;
-    int mCommunicator;
-
-    bool mMatched;
-    MemoryFragment* mMemoryFragment;
-    void* mLocalPointer;
-    int mSize;
-};
-
 struct SharedFragmentBuffer {
     SharedFragmentBuffer(int numFragments, int fragmentSize)
         : fragments(numFragments, fragmentSize)
@@ -525,9 +457,9 @@ struct SharedFragmentBuffer {
 
     // Try to find free fragment and lock it.
     // Return nullptr if there are no free fragments.
-    __host__ __device__ MemoryFragment* tryLockFreeFragment() {
+    __host__ __device__ volatile MemoryFragment* tryLockFreeFragment() {
         for (int i = 0; i < fragments.size(); i++) {
-            MemoryFragment* fragment = &fragments[i];
+            volatile MemoryFragment* fragment = fragments.get(i);
             if (fragment->memoryLock.tryLock()) return fragment;
         }
         return nullptr;
@@ -535,102 +467,16 @@ struct SharedFragmentBuffer {
 
      // Try to find free fragment and lock it.
      // If there are no free fragments this thread will wait for it.
-    __host__ __device__ MemoryFragment* lockFreeFragment() {
-        MemoryFragment* fragment = nullptr;
-        while (!fragment) {
-            fragment = tryLockFreeFragment();
-        }
-        return fragment;
-    }
+//     __host__ __device__ MemoryFragment* lockFreeFragment() {
+//         volatile MemoryFragment* fragment = nullptr;
+//         while (!fragment) {
+//             fragment = tryLockFreeFragment();
+//         }
+//         return fragment;
+//     }
 
     ManagedVector<MemoryFragment> fragments;
 };
-
-
-struct MessageRequest {
-    MessageRequest() : localBuffer(nullptr) {
-
-    }
-
-    void setLocalBuffer(const void* value) {
-        localBuffer = (void*)value;
-    }
-
-    enum class Type { SEND, RECV };
-    Type type;
-
-    enum class Stage { ONE, TWO, ROUNDTRIP };
-    Stage stage;
-
-    MemoryFragment* memoryFragment = nullptr;
-    void* localBuffer;
-    int bytesLeft;
-};
-
-struct LocalFragmentMapping {
-    MemoryFragment** localAddress;
-    MemoryFragment* memoryFragment;
-};
-
-struct MessageSendRecv {
-
-    MessageSendRecv()
-        : sharedProcessQueues(1024, 1024)
-        , sharedFragmentBuffer(1024, 1024)
-    {
-
-    }
-
-    MessageEnvelope* findPostedRecv(int dst, int tag, int comm);
-    MessageEnvelope* findUnexpectedSend(int src, int tag, int comm);
-
-    void addToUnexpected(int dst, int tag, int comm);
-    void addToRecv(int src, int tag, int comm);
-
-    int currentProcessId();
-
-    void lockMatchingLists(int process);
-    void unlockMatchingLists(int process);
-
-    MemoryFragment* allocateMemoryFragment();
-    void releaseMemoryFragment(MemoryFragment* mf);
-
-    void send(const void* buf, int count, int dst, int tag, int comm, MessageRequest& request) {
-        lockMatchingLists(dst);
-        if (MessageEnvelope* postedRecv = findPostedRecv(dst, tag, comm)) {
-            // Specify concrete values if they were wildcard
-            postedRecv->mSource = currentProcessId();
-            postedRecv->mCommunicator = comm;
-
-            postedRecv->mMemoryFragment = allocateMemoryFragment();
-
-            request.memoryFragment = postedRecv->mMemoryFragment;
-        } else {
-            addToUnexpected(dst, tag, comm);
-        }
-        unlockMatchingLists(dst);
-
-        request.type = MessageRequest::Type::SEND;
-        request.setLocalBuffer(buf);
-        request.bytesLeft = count;
-    }
-
-    void recv(void* buf, int count, int src, int tag, int comm, MessageRequest& request) {
-        lockMatchingLists(currentProcessId());
-        if (MessageEnvelope* unexpectedSend = findUnexpectedSend(src, tag, comm)) {
-            unexpectedSend->mMemoryFragment = allocateMemoryFragment();
-
-        } else {
-            addToRecv(src, tag, comm);
-        }
-        unlockMatchingLists(currentProcessId());
-    }
-
-
-    SharedProcessQueues sharedProcessQueues;
-    SharedFragmentBuffer sharedFragmentBuffer;
-};
-
 
 } // namespace
 
