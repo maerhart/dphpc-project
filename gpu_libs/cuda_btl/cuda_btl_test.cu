@@ -259,6 +259,9 @@ __device__ PendingOperation* irecv(int src, void* data, int count, int comm, int
 __device__ void progressCompletedRecv(PendingOperation& recv) {
     LOG("progressCompletedRecv");
 
+    LOG("unlocking memory fragment");
+    assert(recv.fragment);
+    recv.fragment->memoryLock.unlock();
     if (recv.canBeFreed) {
         LOG("freeing local recv operation");
         recv.free();
@@ -268,8 +271,6 @@ __device__ void progressCompletedRecv(PendingOperation& recv) {
 __device__ void progressCompletedSend(PendingOperation& send) {
     LOG("progressCompletedSend");
 
-    LOG("unlocking memory fragment");
-    send.fragment->memoryLock.unlock();
     if (send.canBeFreed) {
         LOG("freeing local send operation");
         send.free();
@@ -291,6 +292,10 @@ __device__ void progressAllocatedSend(PendingOperation& send) {
     assert(send.fragment); // fragment should be allocated
     fr.fragment = send.fragment;
     fr.privatePointer = send.foreignPendingOperation;
+    LOG("Pointer to foreign pending operation %p", send.foreignPendingOperation);
+    assert(send.foreignPendingOperation);
+    assert(fr.privatePointer);
+    assert(fr.fragment);
 
     LOG("put fragment %p into list of incoming fragments", fr.fragment);
     threadState->incomingFragments.push(fr);
@@ -330,7 +335,7 @@ __device__ void progressMatchedSend(PendingOperation& send) {
         srcPtr = send.data;
         send.data = nullptr;
         send.count = 0;
-        send.state = PendingOperation::State::COMPLETED;
+        // we can't mark it as completed because other thread didn't received pointer to fragment
     } else {
         LOG("Fragment buffer size less than data size");
         copySize = send.count;
@@ -349,11 +354,8 @@ __device__ void progressMatchedSend(PendingOperation& send) {
     LOG("Memory fragment of local pending operation is set to %p", memoryFragment);
     send.fragment = memoryFragment;
 
-    if (send.state == PendingOperation::State::ALLOCATED) {
-        progressAllocatedSend(send);
-    } else if (send.state == PendingOperation::State::COMPLETED) {
-        progressCompletedSend(send);
-    }
+    send.state = PendingOperation::State::ALLOCATED;
+    progressAllocatedSend(send);
 }
 
 __device__ void progressStartedSend(PendingOperation& send) {
@@ -388,6 +390,8 @@ __device__ void progressStartedSend(PendingOperation& send) {
     if (matchedRecv) {
         LOG("Remove receive from the list of expected receives of other process");
         send.foreignPendingOperation = matchedRecv->privatePointer;
+        assert(send.foreignPendingOperation);
+        LOG("Pointer to foregin pending operation is %p", send.foreignPendingOperation);
         rq.pop(matchedRecv);
         LOG("Change state to MATCHED");
         send.state = PendingOperation::State::MATCHED;
@@ -398,6 +402,7 @@ __device__ void progressStartedSend(PendingOperation& send) {
         md.comm = send.comm;
         md.src = src;
         md.tag = send.tag;
+        md.privatePointer = &send;
         uq.push(md);
         LOG("Change state to POSTED");
         send.state = PendingOperation::State::POSTED;
@@ -534,6 +539,7 @@ __device__ void progressStartedRecv(PendingOperation& recv) {
         md.comm = recv.comm;
         md.src = recv.otherThread;
         md.tag = recv.tag;
+        md.privatePointer = &recv;
         rq.push(md);
         
         LOG("Change state to POSTED");
@@ -603,6 +609,7 @@ __device__ void progressAllocatedRecv(PendingOperation& recv) {
     fr.privatePointer = recv.foreignPendingOperation;
     
     assert(fr.fragment);
+    assert(fr.privatePointer);
     
     LOG("Put new fragment into list of incoming fragments");
     threadState->incomingFragments.push(fr);
@@ -701,12 +708,15 @@ __device__ void receiveFragmentPointers() {
         assert(inFrag);
 
         volatile MemoryFragment* frag = inFrag->fragment;
-        
+        assert(frag);
+
+
         PendingOperation* pop = inFrag->privatePointer;
         LOG("Extract pointer to private pending operation %p", pop);
         assert(pop);
         
-        assert(pop->fragment);
+        assert(!pop->fragment);
+
         LOG("Assign incoming fragment %p to the private pending operation %p", frag, pop);
         pop->fragment = frag;
         
