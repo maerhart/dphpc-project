@@ -18,5 +18,5 @@ set(CMAKE_CUDA_FLAGS
     -gencode arch=compute_61,code=sm_61 \
     -gencode arch=compute_70,code=sm_70")
 
-add_executable(cuda_btl_test cuda_btl_test.cu)
+add_executable(cuda_btl_test cuda_mpi_test.cu cuda_mpi.cu)
 

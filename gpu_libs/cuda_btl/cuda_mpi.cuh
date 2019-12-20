@@ -8,6 +8,8 @@
 #include <cuda.h>
 #include <cooperative_groups.h>
 
+namespace cg = cooperative_groups;
+
 #define LOG(fmt, ...) printf("Thread %d " __FILE__ ":%d " fmt "\n", cg::this_grid().thread_rank(), __LINE__,## __VA_ARGS__)
 
 #define ALIVE LOG("STILL ALIVE!");
@@ -20,16 +22,9 @@
     }\
 } while(0)
 
-__device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
-{
-    volatile char *d = (volatile char*) dst;
-    volatile char *s = (volatile char*) src;
-    for (size_t i = 0; i < n; i++) {
-        d[i] = s[i];
-    }
-}
+#define VOLATILE(x) (*((volatile decltype(x)*)&x))
 
-namespace cg = cooperative_groups;
+__device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n);
 
 namespace CudaMPI {
 
@@ -184,118 +179,6 @@ namespace MEMORY_LOCALITY {
 
 namespace cg = cooperative_groups;
 
-// check where memory is located
-// from https://stackoverflow.com/questions/42519766/can-i-check-whether-an-address-is-in-shared-memory
-#define DEFINE_is_xxx_memory(LOCATION) \
-    __device__ bool is_ ## LOCATION ## _memory(void *ptr) {\
-        int res;\
-        asm("{"\
-            ".reg .pred p;\n\t"\
-            "isspacep." #LOCATION " p, %1;\n\t"\
-            "selp.b32 %0, 1, 0, p;\n\t"\
-            "}"\
-            : "=r"(res): "l"(ptr));\
-        return res;\
-    }
-
-DEFINE_is_xxx_memory(global) // __device__, __managed__, malloc() from kernel
-DEFINE_is_xxx_memory(local) // scope-local stack variables
-DEFINE_is_xxx_memory(shared) // __shared__
-DEFINE_is_xxx_memory(const) // __constant__
-
-
-
-
-
-class CudaSendRecv {
-public:
-
-    struct Location {
-        int gridIndex;
-        int blockIndex;
-        int warpIndex;
-    };
-    __device__ int gridRank(int threadRankInMultiGrid) {
-        return threadRankInMultiGrid / cg::this_grid().size();
-    }
-    __device__ int rankInGrid(int threadRankInMultiGrid) {
-        return threadRankInMultiGrid % cg::this_grid().size();
-    }
-    __device__ int blockRank(int threadRankInMultiGrid) {
-        int threadRankInGrid = rankInGrid(threadRankInMultiGrid);
-        return threadRankInGrid / cg::this_thread_block().size();
-    }
-    __device__ int rankInBlock(int threadRankInMultiGrid) {
-        int threadRankInGrid = rankInGrid(threadRankInMultiGrid);
-        return threadRankInGrid % cg::this_thread_block().size();
-    }
-    __device__ int warpRank(int threadRankInMultiGrid) {
-        int threadRankInBlock = rankInBlock(threadRankInMultiGrid);
-        return threadRankInBlock / warpSize;
-    }
-    __device__ int rankInWarp(int threadRankInMultiGrid) {
-        int threadRankInBlock = rankInBlock(threadRankInMultiGrid);
-        return threadRankInBlock % warpSize;
-    }
-
-    __device__ THREAD_LOCALITY::Type getThreadLocalityType(int threadA, int threadB) {
-        if (gridRank(threadA) != gridRank(threadB)) {
-            return THREAD_LOCALITY::MULTI_GRID;
-        } else if (blockRank(threadA) != blockRank(threadB)) {
-            return THREAD_LOCALITY::GRID;
-        } else if (warpRank(threadA) != warpRank(threadB)) {
-            return THREAD_LOCALITY::BLOCK;
-        } else {
-            return THREAD_LOCALITY::WARP;
-        }
-    }
-
-    __device__ MEMORY_LOCALITY::Type getMemoryLocalityType(void* ptr) {
-        if (is_global_memory(ptr)) {
-            return MEMORY_LOCALITY::GLOBAL;
-        } else if (is_local_memory(ptr)) {
-            return MEMORY_LOCALITY::LOCAL;
-        } else if (is_shared_memory(ptr)) {
-            return MEMORY_LOCALITY::SHARED;
-        } else if (is_const_memory(ptr)) {
-            return MEMORY_LOCALITY::CONST;
-        } else {
-            return MEMORY_LOCALITY::OTHER;
-        }
-    }
-
-    __device__ void sendRecv(void* ptr, int n, int srcThread, int dstThread) {
-        int thisThread = cg::this_multi_grid().thread_rank();
-        if (thisThread != srcThread && thisThread != dstThread) return;
-
-        THREAD_LOCALITY::Type threadLocality = getThreadLocalityType(srcThread, dstThread);
-        MEMORY_LOCALITY::Type memoryLocality = getMemoryLocalityType(ptr);
-
-        // check one of two: memory
-
-        switch (threadLocality) {
-            case THREAD_LOCALITY::WARP:
-                sendRecvWarp(ptr, n, srcThread, dstThread);
-                break;
-            case THREAD_LOCALITY::BLOCK:
-                sendRecvBlock(ptr, n, srcThread, dstThread);
-                break;
-            case THREAD_LOCALITY::GRID:
-                sendRecvGrid(ptr, n, srcThread, dstThread);
-                break;
-            case THREAD_LOCALITY::MULTI_GRID:
-                sendRecvMultiGrid(ptr, n, srcThread, dstThread);
-                break;
-        }
-    }
-
-    __device__ void sendRecvWarp(void* ptr, int n, int srcThread, int dstThread);
-    __device__ void sendRecvBlock(void* ptr, int n, int srcThread, int dstThread);
-    __device__ void sendRecvGrid(void* ptr, int n, int srcThread, int dstThread);
-    __device__ void sendRecvMultiGrid(void* ptr, int n, int srcThread, int dstThread);
-
-};
-
 struct CircularBufferState {
     __host__ __device__ CircularBufferState(int size)
         : size(size)
@@ -332,7 +215,7 @@ struct CircularBufferState {
     int size;
 };
 
-__host__ __device__ void cudaGlobalFence() {
+inline __host__ __device__ void cudaGlobalFence() {
     #if defined(__CUDA_ARCH__)
         __threadfence_system();
     #else
@@ -465,19 +348,179 @@ struct SharedFragmentBuffer {
         return nullptr;
     }
 
-     // Try to find free fragment and lock it.
-     // If there are no free fragments this thread will wait for it.
-//     __host__ __device__ MemoryFragment* lockFreeFragment() {
-//         volatile MemoryFragment* fragment = nullptr;
-//         while (!fragment) {
-//             fragment = tryLockFreeFragment();
-//         }
-//         return fragment;
-//     }
-
     ManagedVector<MemoryFragment> fragments;
 };
 
+enum { ANY_SRC = -1 };
+enum { ANY_TAG = -1 };
+
+struct PendingOperation {
+    enum class Type { SEND, RECV };
+
+    // one of two state transitions are possible
+    // STARTED -> POSTED -> SYNCED -> COMPLETED
+    // STARTED -> MATCHED -> ALLOCATED -> SYNCED -> COMPLETED
+    enum class State {
+        STARTED,
+        POSTED,
+        MATCHED,
+        ALLOCATED,
+        SYNCED,
+        COMPLETED
+    };
+
+    Type type = Type::SEND;
+    State state = State::STARTED;
+    volatile MemoryFragment* fragment = nullptr;
+    int otherThread = 0;
+    PendingOperation* foreignPendingOperation = nullptr;
+    void* data = nullptr;
+    int count = 0;
+    int comm = 0;
+    int tag = 0;
+    bool canBeFreed = false;
+    bool unused = true;
+
+    __device__ void free() { unused = true; }
+};
+
+__device__ void progress();
+
+__device__ void progressSend(PendingOperation& send);
+__device__ void progressRecv(PendingOperation& recv);
+
+__device__ void progressStartedRecv(PendingOperation& recv);
+__device__ void progressPostedRecv(PendingOperation& recv);
+__device__ void progressMatchedRecv(PendingOperation& recv);
+__device__ void progressAllocatedRecv(PendingOperation& recv);
+__device__ void progressSyncedRecv(PendingOperation& recv);
+__device__ void progressCompletedRecv(PendingOperation& recv);
+
+__device__ void progressStartedSend(PendingOperation& send);
+__device__ void progressPostedSend(PendingOperation& send);
+__device__ void progressMatchedSend(PendingOperation& send);
+__device__ void progressAllocatedSend(PendingOperation& send);
+__device__ void progressSyncedSend(PendingOperation& send);
+__device__ void progressCompletedSend(PendingOperation& send);
+
+struct ThreadPrivateState {
+
+    __device__ PendingOperation* allocatePendingOperation();
+
+    __device__ Vector<PendingOperation>& getPendingOperations() { return pendingOperations; }
+
+    struct Holder {
+        __device__ Holder(int pendingBufferSize);
+        __device__ ~Holder();
+    };
+
+private:
+
+    __device__ explicit ThreadPrivateState(int pendingBufferSize)
+        : pendingOperations(pendingBufferSize)
+    {
+    }
+
+    Vector<PendingOperation> pendingOperations;
+};
+
+struct MessageDescriptor {
+    PendingOperation* privatePointer;
+    int src;
+    int comm;
+    int tag;
+
+    __host__ __device__ volatile MessageDescriptor& operator=(const MessageDescriptor& other) volatile {
+        privatePointer = other.privatePointer;
+        src = other.src;
+        comm = other.comm;
+        tag = other.tag;
+        return *this;
+    }
+};
+
+struct IncomingFragment {
+    volatile MemoryFragment* fragment;
+    PendingOperation* privatePointer;
+
+    __host__ __device__ volatile IncomingFragment& operator=(const IncomingFragment& other) volatile {
+        fragment = other.fragment;
+        privatePointer = other.privatePointer;
+        return *this;
+    }
+};
+
+struct SharedThreadState {
+    SharedThreadState(int recvListSize, int numIncomingFragments)
+        : unexpectedRecv(recvListSize)
+        , expectedRecv(recvListSize)
+        , incomingFragments(numIncomingFragments)
+    {}
+
+    ManagedMemoryLock recvLock;
+    CircularQueue<MessageDescriptor> unexpectedRecv;
+    CircularQueue<MessageDescriptor> expectedRecv;
+
+    ManagedMemoryLock fragLock;
+    CircularQueue<IncomingFragment> incomingFragments;
+};
+
+class SharedState {
+public:
+    struct Context {
+        int numThreads;
+        int recvListSize;
+        int numFragments;
+        int fragmentSize;
+        int numIncomingFragments;
+    };
+
+private:
+    SharedState(const Context& ctx)
+        : sharedThreadState(ctx.numThreads, ctx.recvListSize, ctx.numIncomingFragments)
+        , sharedFragmentBuffer(ctx.numFragments, ctx.fragmentSize)
+    {
+    }
+
+public:
+    struct Holder {
+        Holder(const Context& ctx) {
+            CUDA_CHECK(cudaMallocManaged(&sharedState, sizeof(SharedState)));
+            new (sharedState) SharedState(ctx);
+            assert(sharedState);
+        }
+        ~Holder() {
+            sharedState->~SharedState();
+            CUDA_CHECK(cudaFree(sharedState));
+        }
+        SharedState* get() const { return sharedState; }
+    private:
+        SharedState* sharedState;
+    };
+
+    ManagedVector<SharedThreadState> sharedThreadState;
+    SharedFragmentBuffer sharedFragmentBuffer;
+};
+
+__device__ SharedState& sharedState();
+
+__device__ void setSharedState(SharedState* sharedState);
+
+__device__ ThreadPrivateState& threadPrivateState();
+
+__device__ PendingOperation* isend(int dst, const void* data, int count, int comm, int tag);
+
+__device__ PendingOperation* irecv(int src, void* data, int count, int comm, int tag);
+
+__device__ void receiveFragmentPointers();
+
+__device__ void progress();
+
+__device__ bool test(PendingOperation* op);
+
+__device__ void wait(PendingOperation* op);
+
 } // namespace
+
 
 #endif

@@ -1,172 +1,19 @@
-#include "cuda_send_recv.cuh"
+#include "cuda_mpi.cuh"
 
-#include <cuda.h>
-#include <cooperative_groups.h>
-
-#include <vector>
-#include <memory>
-
-#define VOLATILE(x) (*((volatile decltype(x)*)&x))
-
-
-
-namespace cg = cooperative_groups;
+__device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
+{
+    volatile char *d = (volatile char*) dst;
+    volatile char *s = (volatile char*) src;
+    for (size_t i = 0; i < n; i++) {
+        d[i] = s[i];
+    }
+}
 
 namespace CudaMPI {
 
-
-enum { ANY_SRC = -1 };
-enum { ANY_TAG = -1 };
-
-struct PendingOperation {
-    enum class Type { SEND, RECV };
-    
-    // one of two state transitions are possible
-    // STARTED -> POSTED -> SYNCED -> COMPLETED
-    // STARTED -> MATCHED -> ALLOCATED -> SYNCED -> COMPLETED
-    enum class State {
-        STARTED,
-        POSTED,
-        MATCHED,
-        ALLOCATED,
-        SYNCED,
-        COMPLETED
-    };
-    
-    Type type = Type::SEND;
-    State state = State::STARTED;
-    volatile MemoryFragment* fragment = nullptr;
-    int otherThread = 0;
-    PendingOperation* foreignPendingOperation = nullptr;
-    void* data = nullptr;
-    int count = 0;
-    int comm = 0;
-    int tag = 0;
-    bool canBeFreed = false;
-    bool unused = true;
-
-    __device__ void free() { unused = true; }
-};
-
-__device__ void progress();
-
-__device__ void progressSend(PendingOperation& send);
-__device__ void progressRecv(PendingOperation& recv);
-
-__device__ void progressStartedRecv(PendingOperation& recv);
-__device__ void progressPostedRecv(PendingOperation& recv);
-__device__ void progressMatchedRecv(PendingOperation& recv);
-__device__ void progressAllocatedRecv(PendingOperation& recv);
-__device__ void progressSyncedRecv(PendingOperation& recv);
-__device__ void progressCompletedRecv(PendingOperation& recv);
-
-__device__ void progressStartedSend(PendingOperation& send);
-__device__ void progressPostedSend(PendingOperation& send);
-__device__ void progressMatchedSend(PendingOperation& send);
-__device__ void progressAllocatedSend(PendingOperation& send);
-__device__ void progressSyncedSend(PendingOperation& send);
-__device__ void progressCompletedSend(PendingOperation& send);
-
-struct ThreadPrivateState {
-    __device__ explicit ThreadPrivateState(int pendingBufferSize)
-        : pendingOperations(pendingBufferSize)
-    {
-    }
-
-    __device__ PendingOperation* allocatePendingOperation() {
-        for (int i = 0; i < pendingOperations.size(); i++) {
-            PendingOperation& op = pendingOperations[i];
-            if (op.unused) {
-                op.unused = false;
-                return &op;
-            }
-        }
-        return nullptr;
-    }
-
-    __device__ Vector<PendingOperation>& getPendingOperations() { return pendingOperations; }
-
-private:
-
-    Vector<PendingOperation> pendingOperations;
-};
-
-struct MessageDescriptor {
-    PendingOperation* privatePointer;
-    int src;
-    int comm;
-    int tag;
-
-    __host__ __device__ volatile MessageDescriptor& operator=(const MessageDescriptor& other) volatile {
-        privatePointer = other.privatePointer;
-        src = other.src;
-        comm = other.comm;
-        tag = other.tag;
-        return *this;
-    }
-};
-
-struct IncomingFragment {
-    volatile MemoryFragment* fragment;
-    PendingOperation* privatePointer;
-    
-    __host__ __device__ volatile IncomingFragment& operator=(const IncomingFragment& other) volatile {
-        fragment = other.fragment;
-        privatePointer = other.privatePointer;
-        return *this;
-    }
-};
-
-struct SharedThreadState {
-    SharedThreadState(int recvListSize, int numIncomingFragments)
-        : unexpectedRecv(recvListSize)
-        , expectedRecv(recvListSize)
-        , incomingFragments(numIncomingFragments)
-    {}
-    
-    ManagedMemoryLock recvLock;
-    CircularQueue<MessageDescriptor> unexpectedRecv;
-    CircularQueue<MessageDescriptor> expectedRecv;
-    
-    ManagedMemoryLock fragLock;
-    CircularQueue<IncomingFragment> incomingFragments;
-};
-
-struct SharedState {
-private:
-    SharedState(
-        int numThreads,
-        int recvListSize,
-        int numFragments,
-        int fragmentSize,
-        int numIncomingFragments
-    )
-        : sharedThreadState(numThreads, recvListSize, numIncomingFragments)
-        , sharedFragmentBuffer(numFragments, fragmentSize)
-    {
-    }
-
-    static void destroy(SharedState* sharedState) {
-        sharedState->~SharedState();
-        CUDA_CHECK(cudaFree(sharedState));
-    }
-
-public:
-    using UniquePtr = std::unique_ptr<SharedState, decltype(&destroy)>;
-
-    template <typename... Args>
-    static UniquePtr allocate(Args... args) {
-        SharedState* ret = nullptr;
-        CUDA_CHECK(cudaMallocManaged(&ret, sizeof(SharedState)));
-        new (ret) SharedState(args...);
-        assert(ret);
-        return UniquePtr(ret, &destroy);
-    }
-
-    ManagedVector<SharedThreadState> sharedThreadState;
-    SharedFragmentBuffer sharedFragmentBuffer;
-};
-
+// this pointer should be initialized before executing any other functions
+// size of this array should be equal to the number of launched threads
+// on this device
 __device__ SharedState* gSharedState = nullptr;
 
 __device__ SharedState& sharedState() {
@@ -174,10 +21,21 @@ __device__ SharedState& sharedState() {
     return *gSharedState;
 };
 
+__device__ void setSharedState(SharedState* sharedState) {
+    gSharedState = sharedState;
+}
 
-// this pointer should be initialized before executing any other functions
-// size of this array should be equal to the number of launched threads
-// on this device
+__device__ PendingOperation* ThreadPrivateState::allocatePendingOperation() {
+    for (int i = 0; i < pendingOperations.size(); i++) {
+        PendingOperation& op = pendingOperations[i];
+        if (op.unused) {
+            op.unused = false;
+            return &op;
+        }
+    }
+    return nullptr;
+}
+
 __device__ ThreadPrivateState* gThreadLocalState = nullptr;
 
 __device__ ThreadPrivateState& threadPrivateState() {
@@ -186,26 +44,23 @@ __device__ ThreadPrivateState& threadPrivateState() {
     return gThreadLocalState[gridIdx];
 }
 
-template <typename... Args>
-__device__ void initializeThreadPrivateState(Args... args) {
-    LOG("initializeThreadPrivateState()");
+__device__ ThreadPrivateState::Holder::Holder(int pendingBufferSize) {
+    LOG("initializeThreadPrivateState");
     if (0 == cg::this_grid().thread_rank()) {
         *((volatile ThreadPrivateState**)&gThreadLocalState) = (ThreadPrivateState*)malloc(cg::this_grid().size() * sizeof(ThreadPrivateState));
     }
     cg::this_grid().sync();
-    new (&threadPrivateState()) ThreadPrivateState(args...);
+    new (&threadPrivateState()) ThreadPrivateState(pendingBufferSize);
 }
 
-__device__ void destroyThreadPrivateState() {
-    LOG("destroyThreadPrivateState()");
+__device__ ThreadPrivateState::Holder::~Holder() {
+    LOG("destroyThreadPrivateState");
     threadPrivateState().~ThreadPrivateState();
     cg::this_grid().sync();
     if (0 == cg::this_grid().thread_rank()) {
         free(gThreadLocalState);
     }
 }
-
-
 
 __device__ PendingOperation* isend(int dst, const void* data, int count, int comm, int tag) {
     LOG("isend");
@@ -397,7 +252,7 @@ __device__ void progressStartedSend(PendingOperation& send) {
         send.state = PendingOperation::State::MATCHED;
     } else {
         LOG("Matching receive is not found, post send in unexpected receives of other process");
-        
+
         MessageDescriptor md;
         md.comm = send.comm;
         md.src = src;
@@ -417,7 +272,6 @@ __device__ void progressStartedSend(PendingOperation& send) {
         progressPostedSend(send);
     }
 }
-
 
 __device__ void progressPostedSend(PendingOperation& send) {
     LOG("progressPostedSend()");
@@ -495,7 +349,6 @@ __device__ void progressSend(PendingOperation& send) {
     }
 }
 
-
 __device__ void progressStartedRecv(PendingOperation& recv) {
     LOG("progressStartedRecv()");
 
@@ -530,7 +383,7 @@ __device__ void progressStartedRecv(PendingOperation& recv) {
         recv.foreignPendingOperation = matchedSend->privatePointer;
         LOG("Remove message from list of unexpected messages");
         uq.pop(matchedSend);
-        
+
         LOG("Change state to MATCHED");
         recv.state = PendingOperation::State::MATCHED;
     } else {
@@ -541,7 +394,7 @@ __device__ void progressStartedRecv(PendingOperation& recv) {
         md.tag = recv.tag;
         md.privatePointer = &recv;
         rq.push(md);
-        
+
         LOG("Change state to POSTED");
         recv.state = PendingOperation::State::POSTED;
     }
@@ -580,15 +433,15 @@ __device__ void progressMatchedRecv(PendingOperation& recv) {
         return;
     }
     LOG("Memory fragment is locked");
-    
+
     LOG("Transfer ownership of fragment to other thread");
     memoryFragment->ownerProcess = recv.otherThread;
-    
+
     recv.fragment = memoryFragment;
-    
+
     LOG("Change state to ALLOCATED");
     recv.state = PendingOperation::State::ALLOCATED;
-    
+
     progressAllocatedRecv(recv);
 }
 
@@ -602,24 +455,24 @@ __device__ void progressAllocatedRecv(PendingOperation& recv) {
         return;
     }
     LOG("Locked successfully");
-    
-    
+
+
     IncomingFragment fr;
     fr.fragment = recv.fragment;
     fr.privatePointer = recv.foreignPendingOperation;
-    
+
     assert(fr.fragment);
     assert(fr.privatePointer);
-    
+
     LOG("Put new fragment into list of incoming fragments");
     threadState->incomingFragments.push(fr);
-    
+
     LOG("Unlock list of incoming fragments of other thread %d", recv.otherThread);
     threadState->fragLock.unlock();
-    
+
     LOG("Change state to SYNCED");
     recv.state = PendingOperation::State::SYNCED;
-    
+
     progressSyncedRecv(recv);
 }
 
@@ -632,7 +485,7 @@ __device__ void progressSyncedRecv(PendingOperation& recv) {
         return;
     }
     LOG("Fragment is owned by current thread");
-    
+
     int copySize = 0;
     void* dstPtr = nullptr;
     if (recv.fragment->data.size() < recv.count) {
@@ -654,10 +507,10 @@ __device__ void progressSyncedRecv(PendingOperation& recv) {
     }
     LOG("Copy data from fragment buffer into local memory");
     memcpy_volatile(dstPtr, recv.fragment->data.get(0), copySize);
-    
+
     LOG("Transfer fragment ownership to other thread");
     recv.fragment->ownerProcess = recv.otherThread;
-    
+
     if (recv.state == PendingOperation::State::COMPLETED) {
         progressCompletedRecv(recv);
     }
@@ -701,7 +554,7 @@ __device__ void receiveFragmentPointers() {
         return;
     }
     LOG("Locked successfully");
-    
+
     LOG("Looping over incoming fragments");
     while (!sts->incomingFragments.empty()) {
         volatile IncomingFragment* inFrag = sts->incomingFragments.head();
@@ -714,16 +567,16 @@ __device__ void receiveFragmentPointers() {
         PendingOperation* pop = inFrag->privatePointer;
         LOG("Extract pointer to private pending operation %p", pop);
         assert(pop);
-        
+
         assert(!pop->fragment);
 
         LOG("Assign incoming fragment %p to the private pending operation %p", frag, pop);
         pop->fragment = frag;
-        
+
         LOG("Remove fragment from the list of incoming fragments");
         sts->incomingFragments.pop(inFrag);
     }
-    
+
     LOG("Unlock list of incoming fragments of current thread");
     sts->fragLock.unlock();
 }
@@ -732,7 +585,7 @@ __device__ void progress() {
     LOG("progress()");
 
     receiveFragmentPointers();
-    
+
     Vector<PendingOperation>& pops = threadPrivateState().getPendingOperations();
     for (int i = 0; i < pops.size(); i++) {
         PendingOperation& pop = pops[i];
@@ -775,43 +628,3 @@ __device__ void wait(PendingOperation* op) {
 }
 
 } // namespace
-
-__global__ void mykernel(CudaMPI::SharedState* sharedState) {
-
-    if (cg::this_grid().thread_rank() == 0) {
-        CudaMPI::gSharedState = sharedState;
-    }
-    cg::this_grid().sync();
-
-    CudaMPI::initializeThreadPrivateState(20);
-
-    LOG("INITIALIZE");
-
-    if (cg::this_grid().thread_rank() == 0) {
-        int x = 3456;
-
-        CudaMPI::PendingOperation* op = CudaMPI::isend(1, &x, sizeof(int), 0, 15);
-
-        CudaMPI::wait(op);
-    } else if (cg::this_grid().thread_rank() == 1) {
-        int x = -1234;
-
-        CudaMPI::PendingOperation* op = CudaMPI::irecv(0, &x, sizeof(int), 0, 15);
-
-        CudaMPI::wait(op);
-
-        printf("received: %d\n", x);
-    }
-
-    LOG("FINALIZE");
-    cg::this_grid().sync();
-
-    CudaMPI::destroyThreadPrivateState();
-}
-
-int main() {
-    CudaMPI::SharedState::UniquePtr sharedState = CudaMPI::SharedState::allocate(2, 10, 10, 10, 10);
-    mykernel<<<1,2>>>(sharedState.get());
-    CUDA_CHECK(cudaPeekAtLastError());
-    CUDA_CHECK(cudaDeviceSynchronize());
-}
