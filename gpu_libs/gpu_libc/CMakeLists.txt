@@ -8,4 +8,3 @@ add_library(gpu_libc
     sys/gpu_time.cu
     )
 target_include_directories(gpu_libc PUBLIC sys)
-target_link_libraries(gpu_libc PUBLIC managed_memory)

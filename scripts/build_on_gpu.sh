@@ -23,17 +23,17 @@ do
 done
 
 # add all files with main functions and create separate binaries for them
-main_files=$(grep -rl "__gpu_main_kernel" .)
+main_files=$(grep -rl "__gpu_main" .)
 
 # add all files without main functions
 
 # files with main functions
 # for them we create binaries
-files_with_main=$(grep --include "*.cu" -rl "__gpu_main_kernel" .)
+files_with_main=$(grep --include "*.cu" -rl "__gpu_main" .)
 
 # files without main functions
 # for them we create object files
-files_without_main=$(grep --include "*.cu" -rlL "__gpu_main_kernel" .)
+files_without_main=$(grep --include "*.cu" -rlL "__gpu_main" .)
 
 # find list of includes
 project_include_dirs=$(find . -type d | sed 's/^/-I/')
@@ -52,7 +52,9 @@ project(examples LANGUAGES C CXX CUDA)
 
 set(CMAKE_CUDA_FLAGS 
     "${CMAKE_CUDA_FLAGS} \
-    -gencode arch=compute_60,code=sm_60")
+    -gencode arch=compute_60,code=sm_60 \
+    -gencode arch=compute_61,code=sm_61 \
+    -gencode arch=compute_70,code=sm_70")
 
 include(${SCRIPTDIR}/../gpu_libs/gpu_libs-exports.cmake)
 

@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 
+#include "getopt.h.cuh"
 
 #define gethostname __gpu_gethostname
 __device__ int gethostname(char *name, size_t len);

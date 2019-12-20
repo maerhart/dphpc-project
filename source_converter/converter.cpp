@@ -35,12 +35,13 @@ public :
         if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("func")) {
             if (func->isMain()) {
                 llvm::errs() << "Detected main function\n";
-                mRewriter.ReplaceText(func->getNameInfo().getSourceRange(), "__gpu_main");
-                mRewriter.InsertTextAfterToken(func->getEndLoc(), "\n\n__global__ void __gpu_main_kernel(int argc, char* argv[]) { __gpu_main(argc, argv); }");
+                //mRewriter.ReplaceText(func->getNameInfo().getSourceRange(), "__gpu_main");
+                SourceRange mainSrcRange(func->getBeginLoc(), func->getBody()->getBeginLoc());
+                mRewriter.ReplaceText(mainSrcRange, "__device__ int __gpu_main(int argc, char** argv) {");
+            } else {
+                //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
+                mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
             }
-
-            //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
-            mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
         }
         if (const VarDecl *var = Result.Nodes.getNodeAs<VarDecl>("globalVar")) {
             //llvm::errs() << "GLOBAL VAR!!!\n";

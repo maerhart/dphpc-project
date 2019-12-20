@@ -1,7 +1,6 @@
 #include "stdarg.h.cuh"
 
 #include "assert.h.cuh"
-#include "hostdevicecommunicator.cuh"
 #include "mp4_printf.cuh"
 
 __device__ int vfprintf(FILE *stream, const char *format, va_list ap) {

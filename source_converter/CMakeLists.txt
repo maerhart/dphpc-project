@@ -25,10 +25,18 @@ if(NOT clang_POPULATED)
 endif()
 
 function(add_llvm)
+    set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS_SAVED}")
+
+    # it is essential to not use CACHE for CMAKE_BUILD_TYPE, but use it for BUILD_SHARED_LIBS
     set(CMAKE_BUILD_TYPE Release)
-    set(LLVM_ENABLE_RTTI ON) # otherwise it is impossible to inherit from llvm classess
-    set(BUILD_SHARED_LIBS ON) # enables shared shibraries to link with, !!!RUN CMAKE TWO TIMES BEFORE BUILDING!!! due to problems in llvm CMakeLists.txt
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE) # enables shared shibraries to link with
+
+    set(LLVM_TARGETS_TO_BUILD "" CACHE STRING "" FORCE) # not needed since we use only frontend
+    set(LLVM_ENABLE_RTTI ON CACHE BOOL "" FORCE) # otherwise it is impossible to inherit from llvm classess
+
     add_subdirectory(${llvm_SOURCE_DIR} ${llvm_BINARY_DIR} EXCLUDE_FROM_ALL)
+
+    set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
 endfunction()
 
 add_llvm()

@@ -1,5 +1,9 @@
 #include "mpi.h.cuh"
 
+// cuda_mpi.cuh should be included before device specific standard library functions
+// because it relies on standard ones
+#include "cuda_mpi.cuh"
+
 #include "stdlib.h.cuh"
 #include "string.h.cuh"
 

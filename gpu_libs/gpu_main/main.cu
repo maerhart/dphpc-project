@@ -13,9 +13,9 @@
 
 #include <cxxopts.hpp>
 
-#include "hostdevicecommunicator.cuh"
-
 #include "common.h"
+
+#include "cuda_mpi.cuh"
 
 void* copyArgsToUnifiedMemory(int argc, char** argv) {
     // argv is a set of "pointers" to "strings"
@@ -52,6 +52,7 @@ int parseGPUMPIArgs(int argc, char** argv, int& blocksPerGrid, int& threadsPerBl
     if (trippleDashPosition == -1) {
         // no tripple dash, say about it and exit
         std::cerr << "You should specify gpumpi related options after '---gpumpi'" << std::endl;
+
         std::exit(1);
     }
 
@@ -72,7 +73,18 @@ int parseGPUMPIArgs(int argc, char** argv, int& blocksPerGrid, int& threadsPerBl
     return trippleDashPosition;
 }
 
-extern __global__ void __gpu_main_kernel(int argc, char* argv[]);
+extern __device__ int __gpu_main(int argc, char* argv[]);
+
+__global__ void __gpu_main_caller(int argc, char* argv[],
+                                    CudaMPI::SharedState* sharedState,
+                                    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext)
+{
+    CudaMPI::setSharedState(sharedState);
+    CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+
+    int unused = __gpu_main(argc, argv);
+    (void) unused;
+}
 
 int main(int argc, char* argv[]) {
 
@@ -89,13 +101,26 @@ int main(int argc, char* argv[]) {
     // convert the argv array into memory inside the an UM allocated buffer
     void* argvInUnifiedMemory = copyArgsToUnifiedMemory(argcWithoutGPUMPI,argv);
 
-    // allocate memory for host-thread communication
-    gHostDeviceCommunicator.init(blocksPerGrid, threadsPerBlock);
+    // allocate memory for communication
+    CudaMPI::SharedState::Context sharedStateContext;
+    sharedStateContext.numThreads = blocksPerGrid * threadsPerBlock;
+    sharedStateContext.recvListSize = 16;
+    sharedStateContext.numFragments = 256;
+    sharedStateContext.fragmentSize = 1024;
+    sharedStateContext.numIncomingFragments = 64;
+
+    CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
+    CudaMPI::SharedState* sharedState = sharedStateHolder.get();
+
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.pendingBufferSize = 20;
 
     // args passed into kernel function
     void* params[] = {
         (void*)&argcWithoutGPUMPI,
-        (void*)&argvInUnifiedMemory
+        (void*)&argvInUnifiedMemory,
+        (void*)&sharedState,
+        (void*)&threadPrivateStateContext
     };
 
     //create cuda streams for each device
@@ -107,7 +132,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<cudaLaunchParams> launchParamsList(deviceCount);
     for(int i = 0; i < deviceCount; i++) {
-        launchParamsList[i].func = (void*) __gpu_main_kernel;
+        launchParamsList[i].func = (void*) __gpu_main_caller;
         launchParamsList[i].gridDim = blocksPerGrid;
         launchParamsList[i].blockDim = threadsPerBlock;
         launchParamsList[i].args = params;
@@ -120,8 +145,6 @@ int main(int argc, char* argv[]) {
     CUDA_CHECK(cudaLaunchCooperativeKernelMultiDevice(launchParamsList.data(), deviceCount));
     std::cerr << "Finishing kernel!" << std::endl;
 
-    gHostDeviceCommunicator.processMessages();
-
     // wait while all devices are finishing computations
     for(int i = 0; i < deviceCount; i++) {
         CUDA_CHECK(cudaSetDevice(i));
@@ -133,8 +156,6 @@ int main(int argc, char* argv[]) {
     // release all resources
 
     CUDA_CHECK(cudaFree(argvInUnifiedMemory));
-
-    gHostDeviceCommunicator.destroy();
 
     MPI_CHECK(MPI_Finalize());
 

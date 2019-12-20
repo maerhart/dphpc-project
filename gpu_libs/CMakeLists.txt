@@ -11,9 +11,11 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) # prevents mess with host/device linkin
 # enable system-wide atomics: atomicCAS_system (compute capability >= 6.0)
 set(CMAKE_CUDA_FLAGS 
     "${CMAKE_CUDA_FLAGS} \
-    -gencode arch=compute_60,code=sm_60")
+    -gencode arch=compute_60,code=sm_60 \
+    -gencode arch=compute_61,code=sm_61 \
+    -gencode arch=compute_70,code=sm_70")
 
-add_subdirectory(managed_memory)
+add_subdirectory(cuda_btl)
 
 add_subdirectory(gpu_libc)
 add_subdirectory(gpu_mpi)
@@ -29,5 +31,5 @@ export(TARGETS
     gpu_mpi
     gpu_main
     gpumpi_common
-    managed_memory
+    cuda_btl
     APPEND FILE gpu_libs-exports.cmake)
