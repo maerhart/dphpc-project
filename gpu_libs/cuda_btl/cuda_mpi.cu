@@ -1,5 +1,13 @@
 #include "cuda_mpi.cuh"
 
+#ifdef ENABLE_GPU_MPI_LOG
+#define LOG(fmt, ...) printf("Thread %d " __FILE__ ":%d " fmt "\n", cg::this_grid().thread_rank(), __LINE__,## __VA_ARGS__)
+#else
+#define LOG(fmt, ...)
+#endif
+
+#define ALIVE LOG("STILL ALIVE!");
+
 __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
 {
     volatile char *d = (volatile char*) dst;
@@ -22,7 +30,10 @@ __device__ SharedState& sharedState() {
 };
 
 __device__ void setSharedState(SharedState* sharedState) {
-    gSharedState = sharedState;
+    if (cg::this_grid().thread_rank() == 0) {
+        VOLATILE(gSharedState) = sharedState;
+    }
+    cg::this_grid().sync();
 }
 
 __device__ PendingOperation* ThreadPrivateState::allocatePendingOperation() {
@@ -44,13 +55,13 @@ __device__ ThreadPrivateState& threadPrivateState() {
     return gThreadLocalState[gridIdx];
 }
 
-__device__ ThreadPrivateState::Holder::Holder(int pendingBufferSize) {
+__device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
     LOG("initializeThreadPrivateState");
     if (0 == cg::this_grid().thread_rank()) {
-        *((volatile ThreadPrivateState**)&gThreadLocalState) = (ThreadPrivateState*)malloc(cg::this_grid().size() * sizeof(ThreadPrivateState));
+        VOLATILE(gThreadLocalState) = (ThreadPrivateState*)malloc(cg::this_grid().size() * sizeof(ThreadPrivateState));
     }
     cg::this_grid().sync();
-    new (&threadPrivateState()) ThreadPrivateState(pendingBufferSize);
+    new (&threadPrivateState()) ThreadPrivateState(ctx);
 }
 
 __device__ ThreadPrivateState::Holder::~Holder() {
@@ -92,7 +103,7 @@ __device__ PendingOperation* irecv(int src, void* data, int count, int comm, int
     PendingOperation* po = threadPrivateState().allocatePendingOperation();
     while (!po) {
         po = threadPrivateState().allocatePendingOperation();
-        printf("WARNING: Pending operations limit is reached, irecv can be blocked\n");
+        LOG("WARNING: Pending operations limit is reached, irecv can be blocked\n");
         progress();
     }
 
@@ -186,14 +197,14 @@ __device__ void progressMatchedSend(PendingOperation& send) {
     LOG("Compare fragment buffer size %d and data size %d", memoryFragment->data.size(), send.count);
     if (memoryFragment->data.size() >= send.count) {
         LOG("Fragment buffer size greater or equal to data size");
-        copySize = memoryFragment->data.size();
+        copySize = send.count;
         srcPtr = send.data;
         send.data = nullptr;
         send.count = 0;
         // we can't mark it as completed because other thread didn't received pointer to fragment
     } else {
         LOG("Fragment buffer size less than data size");
-        copySize = send.count;
+        copySize = memoryFragment->data.size();
         srcPtr = send.data;
         send.data = (void*)(((char*)send.data) + copySize);
         send.count -= copySize;
@@ -489,14 +500,14 @@ __device__ void progressSyncedRecv(PendingOperation& recv) {
     int copySize = 0;
     void* dstPtr = nullptr;
     if (recv.fragment->data.size() < recv.count) {
-        LOG("Prepare copy of next chank");
+        LOG("Prepare copy of next chunk");
         // a lot of chunks left
         copySize = recv.fragment->data.size();
         dstPtr = recv.data;
         recv.data = (void*)((char*)recv.data + copySize);
         recv.count -= copySize;
     } else {
-        LOG("Prepare copy of last chank");
+        LOG("Prepare copy of last chunk");
         // last chunk
         copySize = recv.count;
         dstPtr = recv.data;

@@ -10,10 +10,6 @@
 
 namespace cg = cooperative_groups;
 
-#define LOG(fmt, ...) printf("Thread %d " __FILE__ ":%d " fmt "\n", cg::this_grid().thread_rank(), __LINE__,## __VA_ARGS__)
-
-#define ALIVE LOG("STILL ALIVE!");
-
 #define CUDA_CHECK(expr) do {\
     cudaError_t err = (expr);\
     if (err != cudaSuccess) {\
@@ -405,19 +401,23 @@ __device__ void progressCompletedSend(PendingOperation& send);
 
 struct ThreadPrivateState {
 
+    struct Context {
+        int pendingBufferSize;
+    };
+
     __device__ PendingOperation* allocatePendingOperation();
 
     __device__ Vector<PendingOperation>& getPendingOperations() { return pendingOperations; }
 
     struct Holder {
-        __device__ Holder(int pendingBufferSize);
+        __device__ Holder(const Context& ctx);
         __device__ ~Holder();
     };
 
 private:
 
-    __device__ explicit ThreadPrivateState(int pendingBufferSize)
-        : pendingOperations(pendingBufferSize)
+    __device__ explicit ThreadPrivateState(const Context& ctx)
+        : pendingOperations(ctx.pendingBufferSize)
     {
     }
 
@@ -519,6 +519,8 @@ __device__ void progress();
 __device__ bool test(PendingOperation* op);
 
 __device__ void wait(PendingOperation* op);
+
+__device__ void initialize();
 
 } // namespace
 
