@@ -16,8 +16,8 @@ __device__ int fprintf(FILE * stream, const char * format, ...) {
     return res;
 }
 
-__device__ int fflush(FILE *__stream) {
-    NOT_IMPLEMENTED
+__device__ int fflush(FILE */*__stream*/) {
+    // nothing to do
     return 0;
 }
 

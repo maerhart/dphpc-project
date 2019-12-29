@@ -19,6 +19,7 @@ set(CMAKE_CUDA_FLAGS
     -gencode arch=compute_70,code=sm_70")
 
 add_library(cuda_btl cuda_mpi.cu)
+#target_compile_definitions(cuda_btl PRIVATE ENABLE_GPU_MPI_LOG)
 
 add_executable(cuda_btl_test cuda_mpi_test.cu cuda_mpi.cu)
-target_compile_definitions(cuda_btl_test PRIVATE ENABLE_GPU_MPI_LOG)
+#target_compile_definitions(cuda_btl_test PRIVATE ENABLE_GPU_MPI_LOG)

@@ -40,7 +40,15 @@ TEST_CASE("Transfer single integer", "[single_int]") {
     CUDA_CHECK(cudaMallocManaged(&res, sizeof(int)));
     *res = 0;
 
-    single_int_kernel<<<1,2>>>(sharedStateHolder.get(), threadPrivateStateContext, res);
+        CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr, 
+        (void*)&threadPrivateStateContext,
+        (void*)&res
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)single_int_kernel, 3, 1, params));
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -85,7 +93,15 @@ TEST_CASE("Transfer array", "[array]") {
     CUDA_CHECK(cudaMallocManaged(&ok, sizeof(bool)));
     *ok = 0;
 
-    transfer_array_kernel<<<1,2>>>(sharedStateHolder.get(), threadPrivateStateContext, ok);
+    CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr, 
+        (void*)&threadPrivateStateContext,
+        (void*)&ok
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)transfer_array_kernel, 3, 1, params));
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -141,7 +157,7 @@ __global__ void send_recv_kernel(
     }
 }
 
-TEST_CASE("Send receive", "[array]") {
+TEST_CASE("Send receive", "[send_recv]") {
     CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
     CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
@@ -151,10 +167,169 @@ TEST_CASE("Send receive", "[array]") {
     ok[0] = false;
     ok[1] = false;
 
-    send_recv_kernel<<<1,2>>>(sharedStateHolder.get(), threadPrivateStateContext, ok);
+    CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr, 
+        (void*)&threadPrivateStateContext,
+        (void*)&ok
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)send_recv_kernel, 3, 1, params));
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
     REQUIRE(ok[0] == true);
     REQUIRE(ok[1] == true);
+}
+
+__global__ void repeat_sendrecv_kernel(
+    CudaMPI::SharedState* sharedState,
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext,
+    bool* ok)
+{
+    CudaMPI::setSharedState(sharedState);
+    CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+
+    const int numRanks = 2;
+    
+    int thisRank = cg::this_grid().thread_rank();
+    int otherRank = (thisRank + 1) % numRanks;
+    
+    const int numRepeats = 5;
+    const int dataSize = 1 << (numRepeats - 1);
+    
+    int localData[dataSize] = {};
+    for (int i = 0; i < dataSize; i++) {
+        localData[i] = (thisRank + 1) * i;
+    }
+    
+    int remoteData[dataSize] = {};
+    
+    CudaMPI::PendingOperation* send_op[numRepeats];
+    CudaMPI::PendingOperation* recv_op[numRepeats];
+    
+    for (int i = 0; i < numRepeats; i++) {
+        int tag = i + 10;
+        send_op[i] = CudaMPI::isend(otherRank, localData, sizeof(int) * (1 << i), 0, tag);
+        recv_op[i] = CudaMPI::irecv(otherRank, remoteData, sizeof(int) * (1 << i), 0, tag);
+    }
+    
+    for (int i = 0; i < numRepeats; i++) {
+        CudaMPI::wait(send_op[i]);
+        CudaMPI::wait(recv_op[i]);
+    }
+    
+    ok[thisRank] = true;
+    for (int i = 0; i < dataSize; i++) {
+        if (remoteData[i] != (otherRank + 1) * i) ok[thisRank] = false;
+    }
+}
+
+TEST_CASE("Repeat send recv", "[repeat_sendrecv]") {
+    CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
+    CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+
+    bool* ok;
+    CUDA_CHECK(cudaMallocManaged(&ok, 2 * sizeof(bool)));
+    ok[0] = false;
+    ok[1] = false;
+
+    CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr, 
+        (void*)&threadPrivateStateContext,
+        (void*)&ok
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)repeat_sendrecv_kernel, 2, 1, params));
+    CUDA_CHECK(cudaPeekAtLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    REQUIRE(ok[0] == true);
+    REQUIRE(ok[1] == true);
+}
+
+__global__ void network_flood_kernel(
+    CudaMPI::SharedState* sharedState,
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext,
+    bool* ok)
+{
+    CudaMPI::setSharedState(sharedState);
+    CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+
+    const int numRanks = 3;
+    
+    int thisRank = cg::this_grid().thread_rank();
+    int nextRank = (thisRank + 1) % numRanks;
+    int prevRank = (numRanks + thisRank - 1) % numRanks;
+    
+    const int numRepeats = 5;
+    const int dataSize = 1 << (numRepeats - 1);
+    
+    int localData[dataSize] = {};
+    for (int i = 0; i < dataSize; i++) {
+        localData[i] = (thisRank + 1) * i;
+    }
+    
+    int prevData[dataSize] = {};
+    int nextData[dataSize] = {};
+    
+    
+    CudaMPI::PendingOperation* send_next_op[numRepeats];
+    CudaMPI::PendingOperation* recv_next_op[numRepeats];
+    
+    CudaMPI::PendingOperation* send_prev_op[numRepeats];
+    CudaMPI::PendingOperation* recv_prev_op[numRepeats];
+    
+    for (int i = 0; i < numRepeats; i++) {
+        int tag = i + 10;
+        send_next_op[i] = CudaMPI::isend(nextRank, localData, sizeof(int) * (1 << i), 0, tag);
+        recv_next_op[i] = CudaMPI::irecv(nextRank, nextData, sizeof(int) * (1 << i), 0, tag);
+        send_prev_op[i] = CudaMPI::isend(prevRank, localData, sizeof(int) * (1 << i), 0, tag);
+        recv_prev_op[i] = CudaMPI::irecv(prevRank, prevData, sizeof(int) * (1 << i), 0, tag);
+    }
+    
+    for (int i = 0; i < numRepeats; i++) {
+        CudaMPI::wait(recv_prev_op[i]);
+        CudaMPI::wait(send_next_op[i]);
+        CudaMPI::wait(send_prev_op[i]);
+        CudaMPI::wait(recv_next_op[i]);
+    }
+    
+    ok[thisRank] = true;
+    for (int i = 0; i < dataSize; i++) {
+        if (prevData[i] != (prevRank + 1) * i) ok[thisRank] = false;
+        if (nextData[i] != (nextRank + 1) * i) ok[thisRank] = false;
+    }
+}
+
+TEST_CASE("Network flood", "[network_flood]") {
+    CudaMPI::SharedState::Context sharedStateContext = {3, 10, 10, 10, 10};
+    CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+
+    bool* ok;
+    CUDA_CHECK(cudaMallocManaged(&ok, 3 * sizeof(bool)));
+    ok[0] = false;
+    ok[1] = false;
+    ok[2] = false;
+
+    CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr, 
+        (void*)&threadPrivateStateContext,
+        (void*)&ok
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)network_flood_kernel, 3, 1, params));
+    CUDA_CHECK(cudaPeekAtLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    REQUIRE(ok[0] == true);
+    REQUIRE(ok[1] == true);
+    REQUIRE(ok[2] == true);
 }

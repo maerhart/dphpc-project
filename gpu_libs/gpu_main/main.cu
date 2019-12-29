@@ -62,8 +62,8 @@ int parseGPUMPIArgs(int argc, char** argv, int& blocksPerGrid, int& threadsPerBl
     cxxopts::Options options("GPU MPI", "GPU MPI");
 
     options.add_options()
-        ("g,blocksPerGrid", "Enable debugging", cxxopts::value<int>())
-        ("b,threadsPerBlock", "File name", cxxopts::value<int>())
+        ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<int>())
+        ("b,threadsPerBlock", "Threads per block", cxxopts::value<int>())
         ;
 
     auto result = options.parse(gpumpi_argc, gpumpi_argv);

@@ -8,6 +8,7 @@
 #include <cuda.h>
 #include <cooperative_groups.h>
 
+
 namespace cg = cooperative_groups;
 
 #define CUDA_CHECK(expr) do {\
@@ -121,6 +122,7 @@ public:
     ManagedVector(int size, Args... args) : mSize(size)
     {
         CUDA_CHECK(cudaMallocManaged(&mData, mSize * sizeof(T)));
+        assert(mData);
         for (int i = 0; i < size; i++) {
             new (&mData[i]) T(args...);
         }
@@ -201,7 +203,7 @@ struct CircularBufferState {
         assert(!empty());
         used -= 1;
         int position = head;
-        head = (position + size - 1) % size;
+        head = (position + 1) % size;
         return position;
     }
 
@@ -283,25 +285,29 @@ public:
     
     __host__ __device__ void pop(volatile T* elem) volatile {
         int index = elem - messages.get(0);
+        assert(0 <= index && index < messages.size());
         active.set(index, false);
         while (!*active.get(index) && !bufferState.empty()) {
-            index = bufferState.pop();
+            int removedIndex = bufferState.pop();
+            assert(removedIndex == index);
+            index = (index + 1) % messages.size();
         }
     }
 
     __host__ __device__ volatile T* head() volatile {
         if (bufferState.empty()) return nullptr;
+        assert(*active.get(bufferState.head));
         return messages.get(bufferState.head);
     }
 
     __host__ __device__ volatile T* next(volatile T* elem) volatile {
-        int index = elem - messages.get(0);
-        int nextIndex;
-        while (true) {
-            nextIndex = (index + 1) % messages.size();
-            if (nextIndex == bufferState.tail) return nullptr;
-            if (*active.get(nextIndex)) return messages.get(nextIndex);
+        assert(elem);
+        int curIndex = elem - messages.get(0);
+        auto next = [size=messages.size()] (int idx) { return (idx + 1) % size; };
+        for (int idx = next(curIndex); idx != bufferState.tail; idx = next(idx)) {
+            if (*active.get(idx)) return messages.get(idx);
         }
+        return nullptr;
     }
 
 private:
@@ -339,7 +345,9 @@ struct SharedFragmentBuffer {
     __host__ __device__ volatile MemoryFragment* tryLockFreeFragment() {
         for (int i = 0; i < fragments.size(); i++) {
             volatile MemoryFragment* fragment = fragments.get(i);
-            if (fragment->memoryLock.tryLock()) return fragment;
+            if (fragment->memoryLock.tryLock()) {
+                return fragment;
+            }
         }
         return nullptr;
     }
@@ -376,7 +384,7 @@ struct PendingOperation {
     int tag = 0;
     bool canBeFreed = false;
     bool unused = true;
-
+    
     __device__ void free() { unused = true; }
 };
 
@@ -440,7 +448,7 @@ struct MessageDescriptor {
 };
 
 struct IncomingFragment {
-    volatile MemoryFragment* fragment;
+    volatile MemoryFragment* volatile fragment;
     PendingOperation* privatePointer;
 
     __host__ __device__ volatile IncomingFragment& operator=(const IncomingFragment& other) volatile {

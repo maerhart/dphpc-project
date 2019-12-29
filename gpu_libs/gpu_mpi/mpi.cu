@@ -56,22 +56,109 @@ __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
     return MPI_SUCCESS;
 }
 
+// #define CAT1(X,Y) X##Y
+// #define CAT(X,Y) CAT1(X,Y)
+// #define $ \
+//     int CAT(rank, __LINE__);\
+//     MPI_Comm_rank(MPI_COMM_WORLD, &CAT(rank, __LINE__));\
+//     printf("ALIVE %s:%d rank %d\n", __FILE__, __LINE__, CAT(rank, __LINE__));
+
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
-    NOT_IMPLEMENTED
+    int dataSize = -1;
+    switch (datatype) {
+        case MPI_INT:
+            dataSize = count * sizeof(int);
+            break;
+        default:
+            assert(0);
+    }
+    int commSize = -1;
+    int commRank = -1;
+    
+    MPI_Comm_size(comm, &commSize);
+    MPI_Comm_rank(comm, &commRank);
+    
+    int tag = 123; // TODO use reserved tag
+    
+    if (commRank == root) {
+        CudaMPI::PendingOperation** ops = (CudaMPI::PendingOperation**) malloc(sizeof(CudaMPI::PendingOperation*) * commSize);
+        assert(ops);
+        for (int dst = 0; dst < commSize; dst++) {
+            if (dst != commRank) {
+                ops[dst] = CudaMPI::isend(dst, buffer, dataSize, comm, tag);
+            }
+        }
+        for (int dst = 0; dst < commSize; dst++) {
+            if (dst != commRank) {
+                CudaMPI::wait(ops[dst]);
+            }
+        }
+        free(ops);
+    } else {
+        CudaMPI::PendingOperation* op = CudaMPI::irecv(root, buffer, dataSize, comm, tag);
+        CudaMPI::wait(op);
+    }
+    
     return MPI_SUCCESS;
 }
 
 __device__ double MPI_Wtime(void) {
-    NOT_IMPLEMENTED
+//     NOT_IMPLEMENTED // TODO
     return 0.;
 }
 
 __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
                           MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
 {
-    NOT_IMPLEMENTED
+    int commSize = -1;
+    int commRank = -1;
+    MPI_Comm_size(comm, &commSize);
+    MPI_Comm_rank(comm, &commRank);
+
+    assert(datatype == MPI_DOUBLE); // TODO
+    int dataSize = sizeof(double) * count;
+    
+    int tag = 124; // TODO use reserved tag
+    
+    if (commRank == root) {
+        auto ops = (CudaMPI::PendingOperation**) malloc(sizeof(CudaMPI::PendingOperation*) * commSize);
+        double* buffers = (double*) malloc(dataSize * commSize);
+        assert(ops);
+        for (int src = 0; src < commSize; src++) {
+            if (src != commRank) {
+                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, comm, tag);
+            }
+        }
+        for (int i = 0; i < count; i++) {
+            assert(op == MPI_SUM);
+            double* recvBufDouble = (double*) recvbuf;
+            recvBufDouble[i] = 0;
+        }
+        for (int src = 0; src < commSize; src++) {
+            double* tempBufDouble = nullptr;
+            if (src != commRank) {
+                CudaMPI::wait(ops[src]);
+                tempBufDouble = buffers + src * count;
+            } else {
+                tempBufDouble = (double*) sendbuf;
+            }
+            double* recvBufDouble = (double*) recvbuf;
+            
+            for (int i = 0; i < count; i++) {
+                assert(op == MPI_SUM);
+                recvBufDouble[i] += tempBufDouble[i];
+            }
+        }
+        
+        free(buffers);
+        free(ops);
+    } else {
+        CudaMPI::PendingOperation* op = CudaMPI::isend(root, sendbuf, dataSize, comm, tag);
+        CudaMPI::wait(op);
+    }
+    
     return MPI_SUCCESS;
 }
 

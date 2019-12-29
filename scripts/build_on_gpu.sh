@@ -31,6 +31,8 @@ main_files=$(grep -rl "__gpu_main" .)
 # for them we create binaries
 files_with_main=$(grep --include "*.cu" -rl "__gpu_main" .)
 
+set +e # because lists can be empty
+
 # files without main functions
 # for them we create object files
 files_without_main=$(grep --include "*.cu" -rlL "__gpu_main" .)
@@ -39,6 +41,8 @@ files_without_main=$(grep --include "*.cu" -rlL "__gpu_main" .)
 project_include_dirs=$(find . -type d | sed 's/^/-I/')
 
 mpi_include_dirs=$(mpicc -showme:compile | sed 's/ /\n/g' | grep '^-I')
+
+set -e
 
 #gpu_mpi_include_dirs=$(find ~/code/gpumpi/gpu_libs/ -type d | sed 's/^/-I/')
 #gpu_mpi_include_dirs=$(find ~/code/gpumpi/gpu_libs/ -type d)
