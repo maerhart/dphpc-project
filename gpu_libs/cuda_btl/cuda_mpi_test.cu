@@ -345,7 +345,7 @@ __global__ void all_to_all_kernel(
     
     int thisRank = cg::this_grid().thread_rank();
     
-    const int numRepeats = 10;
+    const int numRepeats = 20;
     const int dataSize = 16;
     
     int* localData = (int*) malloc(sizeof(int) * dataSize * numRepeats * numRanks);

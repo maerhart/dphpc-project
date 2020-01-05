@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <cassert>
+#include <type_traits>
 
 #include <cuda.h>
 #include <cooperative_groups.h>
@@ -19,33 +20,33 @@ namespace cg = cooperative_groups;
     }\
 } while(0)
 
-#define VOLATILE(x) (*((volatile decltype(x)*)&x))
+#define VOLATILE(x) (*((volatile std::remove_reference_t<decltype(x)>*)&(x)))
 
 __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n);
 
 namespace CudaMPI {
 
 template <typename T>
-class Vector {
+class DeviceVector {
 public:
-    __device__ Vector()
+    __device__ DeviceVector()
         : mSize(0)
         , mReserved(1)
         , mData((T*) malloc(mReserved * sizeof(T)))
     {
     }
     
-    __device__ Vector(int n)
+    __device__ DeviceVector(int n, const T& value = T())
         : mSize(n)
         , mReserved(n)
         , mData((T*) malloc(mReserved * sizeof(T)))
     {
         for (int i = 0; i < mSize; i++) {
-            new (&mData[i]) T();
+            new (&mData[i]) T(value);
         }
     }
     
-    __device__ ~Vector() {
+    __device__ ~DeviceVector() {
         for (int i = 0; i < mSize; i++) {
             mData[i].~T();
         }
@@ -53,6 +54,9 @@ public:
     }
     
     __device__ T& operator[] (int index) { return mData[index]; }
+    
+    // TODO: remove this
+    __device__ T& operator[] (int index) volatile { return (T&)mData[index]; }
     
     __device__ void resize(int new_size) {
         if (new_size == mSize) return;
@@ -91,24 +95,12 @@ public:
         new (&mData[mSize++]) T(val);
     }
     
-    __device__ int size() const { return mSize; }
-    
-    __device__ void disorderedRemove(int index) {
-        assert(0 <= index && index < mSize);
-        // swap with last and remove
-        if (mSize == 1) {
-            mData[index].~T();
-            mSize = 0;
-        } else {
-            mData[index].~T();
-            memcpy(&mData[index], &mData[mSize - 1], sizeof(T));
-            mSize--;
-        }
-    }
+    // TODO: remove volatile
+    __device__ int size() const volatile { return mSize; }
     
 private:
-    __device__ Vector operator=(const Vector&) = delete;
-    __device__ Vector(const Vector&) = delete;
+    __device__ void operator=(const DeviceVector&) = delete;
+    __device__ DeviceVector(const DeviceVector&) = delete;
     
     int mSize;
     int mReserved;
@@ -119,34 +111,48 @@ template <typename T>
 class ManagedVector {
 public:
     template <typename... Args>
-    ManagedVector(int size, Args... args) : mSize(size)
+    __host__ __device__ ManagedVector(int size, Args... args) : mSize(size)
     {
+#ifdef __CUDA_ARCH__
+        printf("ERROR: ManagedVector can't be initialized from device");
+        assert(0);
+#else
         CUDA_CHECK(cudaMallocManaged(&mData, mSize * sizeof(T)));
         assert(mData);
         for (int i = 0; i < size; i++) {
             new (&mData[i]) T(args...);
         }
+#endif
     }
 
-    ~ManagedVector() {
+    __host__ __device__ ~ManagedVector() {
+#ifdef __CUDA_ARCH__
+        assert(0);
+#else
         for (int i = 0; i < mSize; i++) {
             mData[i].~T();
         }
         CUDA_CHECK(cudaFree((T*)mData));
+#endif
     }
 
     // Can't support [] as in usual std::vector, because
     // all memory accesses to managed memory should be volatile.
-
-    __host__ __device__ void set(int index, const T& value) volatile {
+    
+    __host__ __device__ volatile T& operator[](int index) volatile {
         assert(0 <= index && index < mSize);
-        ((volatile T*)mData)[index] = value;
+        return VOLATILE(mData[index]);
     }
 
-    __host__ __device__ volatile T* get(int index) volatile {
-        assert(0 <= index && index < mSize);
-        return (volatile T*)(mData + index);
-    }
+//     __host__ __device__ void set(int index, const T& value) volatile {
+//         assert(0 <= index && index < mSize);
+//         ((volatile T*)mData)[index] = value;
+//     }
+// 
+//     __host__ __device__ volatile T* get(int index) volatile {
+//         assert(0 <= index && index < mSize);
+//         return (volatile T*)(mData + index);
+//     }
 
     __host__ __device__ int size() const volatile { return mSize; }
 
@@ -250,12 +256,12 @@ private:
     unsigned locked;
 };
 
-template <typename T>
+template <typename T, template <typename> typename Vector>
 class CircularQueue {
 public:
     
-    CircularQueue(int size)
-        : messages(size)
+    __host__ __device__ CircularQueue(int size)
+        : data(size)
         , active(size, false)
         , bufferState(size)
     {
@@ -277,44 +283,51 @@ public:
         return bufferState.full();
     }
 
-    __host__ __device__ void push(const T& md) volatile {
+    __host__ __device__ int push(const T& md) volatile {
         int position = bufferState.push();
-        messages.set(position, md);
-        active.set(position, true);
+        data[position] = md;
+        active[position] = true;
+        return position;
+    }
+    
+    __host__ __device__ T& get(int position) volatile {
+        assert(0 <= position && position < data.size());
+        assert(active[position]);
+        return data[position];
     }
     
     __host__ __device__ void pop(volatile T* elem) volatile {
-        int index = elem - messages.get(0);
-        assert(0 <= index && index < messages.size());
-        active.set(index, false);
+        int index = elem - &data[0];
+        assert(0 <= index && index < data.size());
+        active[index] = false;
         if (bufferState.head == index) {
-            while (!*active.get(index) && !bufferState.empty()) {
+            while (!active[index] && !bufferState.empty()) {
                 int removedIndex = bufferState.pop();
                 assert(removedIndex == index);
-                index = (index + 1) % messages.size();
+                index = (index + 1) % data.size();
             }
         }
     }
 
     __host__ __device__ volatile T* head() volatile {
         if (bufferState.empty()) return nullptr;
-        assert(*active.get(bufferState.head));
-        return messages.get(bufferState.head);
+        assert(active[bufferState.head]);
+        return &data[bufferState.head];
     }
 
     __host__ __device__ volatile T* next(volatile T* elem) volatile {
         assert(elem);
-        int curIndex = elem - messages.get(0);
-        auto next = [size=messages.size()] (int idx) { return (idx + 1) % size; };
+        int curIndex = elem - &data[0];
+        auto next = [size=data.size()] (int idx) { return (idx + 1) % size; };
         for (int idx = next(curIndex); idx != bufferState.tail; idx = next(idx)) {
-            if (*active.get(idx)) return messages.get(idx);
+            if (active[idx]) return &data[idx];
         }
         return nullptr;
     }
 
 private:
-    ManagedVector<T> messages;
-    ManagedVector<bool> active;
+    Vector<T> data;
+    Vector<bool> active;
     CircularBufferState bufferState;
 };
 
@@ -346,9 +359,9 @@ struct SharedFragmentBuffer {
     // Return nullptr if there are no free fragments.
     __host__ __device__ volatile MemoryFragment* tryLockFreeFragment() {
         for (int i = 0; i < fragments.size(); i++) {
-            volatile MemoryFragment* fragment = fragments.get(i);
-            if (fragment->memoryLock.tryLock()) {
-                return fragment;
+            volatile MemoryFragment& fragment = fragments[i];
+            if (fragment.memoryLock.tryLock()) {
+                return &fragment;
             }
         }
         return nullptr;
@@ -385,24 +398,46 @@ struct PendingOperation {
     int comm = 0;
     int tag = 0;
     bool canBeFreed = false;
-    bool unused = true;
+    //bool unused = true;
     
-    __device__ void free() { unused = true; }
+    //__device__ void free() { unused = true; }
+};
+
+// This class is used for tracking skipped operations in STARTED state.
+// It helps to prevent breaking the standardized order of MPI operations.
+class ProgressState {
+public:
+    __device__ ProgressState()
+        : mStartedSendSkip(false)
+        , mStartedRecvSkip(false)
+    {
+    }
+    
+    // TODO: Current implementation is too simplistic and conservative,
+    // it can be improved later by considering numbers of src and dst threads.
+    __device__ void markStartedSendSkip(int /*dst*/) { mStartedSendSkip = true; }
+    __device__ bool isStartedSendSkip(int /*dst*/) { return mStartedSendSkip; }
+    
+    __device__ void markStartedRecvSkip(int /*src*/) { mStartedRecvSkip = true; }
+    __device__ bool isStartedRecvSkip(int /*src*/) { return mStartedRecvSkip; }
+private:
+    bool mStartedSendSkip;
+    bool mStartedRecvSkip;
 };
 
 __device__ void progress();
 
-__device__ void progressSend(PendingOperation& send);
-__device__ void progressRecv(PendingOperation& recv);
+__device__ void progressSend(PendingOperation& send, ProgressState& state);
+__device__ void progressRecv(PendingOperation& recv, ProgressState& state);
 
-__device__ void progressStartedRecv(PendingOperation& recv);
+__device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state);
 __device__ void progressPostedRecv(PendingOperation& recv);
 __device__ void progressMatchedRecv(PendingOperation& recv);
 __device__ void progressAllocatedRecv(PendingOperation& recv);
 __device__ void progressSyncedRecv(PendingOperation& recv);
 __device__ void progressCompletedRecv(PendingOperation& recv);
 
-__device__ void progressStartedSend(PendingOperation& send);
+__device__ void progressStartedSend(PendingOperation& send, ProgressState& state);
 __device__ void progressPostedSend(PendingOperation& send);
 __device__ void progressMatchedSend(PendingOperation& send);
 __device__ void progressAllocatedSend(PendingOperation& send);
@@ -417,7 +452,8 @@ struct ThreadPrivateState {
 
     __device__ PendingOperation* allocatePendingOperation();
 
-    __device__ Vector<PendingOperation>& getPendingOperations() { return pendingOperations; }
+    using PendingOperations = CircularQueue<PendingOperation, DeviceVector>;
+    __device__ PendingOperations& getPendingOperations() { return pendingOperations; }
 
     struct Holder {
         __device__ Holder(const Context& ctx);
@@ -431,7 +467,7 @@ private:
     {
     }
 
-    Vector<PendingOperation> pendingOperations;
+    PendingOperations pendingOperations;
 };
 
 struct MessageDescriptor {
@@ -468,11 +504,11 @@ struct SharedThreadState {
     {}
 
     ManagedMemoryLock recvLock;
-    CircularQueue<MessageDescriptor> unexpectedRecv;
-    CircularQueue<MessageDescriptor> expectedRecv;
+    CircularQueue<MessageDescriptor, ManagedVector> unexpectedRecv;
+    CircularQueue<MessageDescriptor, ManagedVector> expectedRecv;
 
     ManagedMemoryLock fragLock;
-    CircularQueue<IncomingFragment> incomingFragments;
+    CircularQueue<IncomingFragment, ManagedVector> incomingFragments;
 };
 
 class SharedState {

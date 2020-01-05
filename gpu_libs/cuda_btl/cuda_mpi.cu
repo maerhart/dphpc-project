@@ -8,7 +8,6 @@
 
 #define $ LOG("STILL ALIVE!");
 
-
 __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
 {
     volatile char *d = (volatile char*) dst;
@@ -16,6 +15,29 @@ __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n
     for (size_t i = 0; i < n; i++) {
         d[i] = s[i];
     }
+}
+
+template <typename T>
+class ScopeGuard {
+public:
+    __device__ ScopeGuard(T func) : run(true), func(func) {}
+    __device__ ScopeGuard(ScopeGuard<T>&& rhs)
+        : run(rhs.run)
+        , func(std::move(rhs.func))
+    { rhs.run = false; }
+    __device__ ~ScopeGuard() { if (run) func(); }
+    __device__ void commit() { run = false; }
+private:
+    ScopeGuard(const ScopeGuard<T>& rhs) = delete;
+    void operator=(const ScopeGuard<T>& rhs) = delete;
+    
+    bool run;
+    T func;
+};
+
+template <typename T>
+__device__ ScopeGuard<T> makeScopeGuard(T func) {
+    return ScopeGuard<T>(func);
 }
 
 namespace CudaMPI {
@@ -38,14 +60,9 @@ __device__ void setSharedState(SharedState* sharedState) {
 }
 
 __device__ PendingOperation* ThreadPrivateState::allocatePendingOperation() {
-    for (int i = 0; i < pendingOperations.size(); i++) {
-        PendingOperation& op = pendingOperations[i];
-        if (op.unused) {
-            op.unused = false;
-            return &op;
-        }
-    }
-    return nullptr;
+    if (pendingOperations.full()) return nullptr;
+    int insertedIndex = pendingOperations.push(PendingOperation());
+    return &pendingOperations.get(insertedIndex);
 }
 
 __device__ ThreadPrivateState* gThreadLocalState = nullptr;
@@ -95,7 +112,7 @@ __device__ PendingOperation* isend(int dst, const void* data, int count, int com
     po->comm = comm;
     po->tag = tag;
     po->canBeFreed = false;
-    po->unused = false;
+//     po->unused = false;
 
     progress();
 
@@ -121,7 +138,7 @@ __device__ PendingOperation* irecv(int src, void* data, int count, int comm, int
     po->comm = comm;
     po->tag = tag;
     po->canBeFreed = false;
-    po->unused = false;
+//     po->unused = false;
 
     progress();
 
@@ -139,7 +156,7 @@ __device__ void progressCompletedRecv(PendingOperation& recv) {
     
     if (recv.canBeFreed) {
         LOG("freeing local recv operation");
-        recv.free();
+        threadPrivateState().getPendingOperations().pop(&recv);
     }
 }
 
@@ -148,25 +165,25 @@ __device__ void progressCompletedSend(PendingOperation& send) {
 
     if (send.canBeFreed) {
         LOG("freeing local send operation");
-        send.free();
+        threadPrivateState().getPendingOperations().pop(&send);
     }
 }
 
 __device__ void progressAllocatedSend(PendingOperation& send) {
     LOG("progressAllocatedSend() %p", &send);
 
-    volatile SharedThreadState* threadState = sharedState().sharedThreadState.get(send.otherThread);
+    volatile SharedThreadState& threadState = sharedState().sharedThreadState[send.otherThread];
     LOG("trying to lock incoming fragments of other thread %d", send.otherThread);
-    if (!threadState->fragLock.tryLock()) {
+    if (!threadState.fragLock.tryLock()) {
         LOG("fragment lock failed");
         return;
     }
     LOG("fragment lock succeed");
     
-    if (threadState->incomingFragments.full()) {
+    if (threadState.incomingFragments.full()) {
         LOG("incoming fragments list is full, retry later");
         LOG("unlocking list of incoming fragments");
-        threadState->fragLock.unlock();
+        threadState.fragLock.unlock();
         return;
     }
 
@@ -180,10 +197,10 @@ __device__ void progressAllocatedSend(PendingOperation& send) {
     assert(fr.fragment);
 
     LOG("put fragment %p into list of incoming fragments", fr.fragment);
-    threadState->incomingFragments.push(fr);
+    threadState.incomingFragments.push(fr);
 
     LOG("unlocking list of incoming fragments");
-    threadState->fragLock.unlock();
+    threadState.fragLock.unlock();
 
     if (send.count == 0) {
         LOG("All buffer data is already inside fragment, change state to COMPLETED");
@@ -228,7 +245,7 @@ __device__ void progressMatchedSend(PendingOperation& send) {
         // we can't mark it as completed because other thread didn't received pointer to fragment
     }
     LOG("Copying data from local memory into memory fragment");
-    memcpy_volatile(memoryFragment->data.get(0), srcPtr, copySize);
+    memcpy_volatile(&memoryFragment->data[0], srcPtr, copySize);
 
     LOG("Transfer ownership of memory fragment to thread %d", send.otherThread);
     memoryFragment->ownerProcess = send.otherThread;
@@ -240,21 +257,30 @@ __device__ void progressMatchedSend(PendingOperation& send) {
     progressAllocatedSend(send);
 }
 
-__device__ void progressStartedSend(PendingOperation& send) {
+__device__ void progressStartedSend(PendingOperation& send, ProgressState& state) {
     LOG("progressStartedSend() %p", &send);
-    volatile SharedThreadState* otherThreadState = sharedState().sharedThreadState.get(send.otherThread);
+    volatile SharedThreadState& otherThreadState = sharedState().sharedThreadState[send.otherThread];
+    
+    if (state.isStartedSendSkip(send.otherThread)) {
+        LOG("Skip send, because some earlier started send is not processed");
+        return;
+    }
+    
+    auto startedSkipGuard = makeScopeGuard([&state,&send](){ 
+        state.markStartedSendSkip(send.otherThread); 
+    });
 
     int src = cg::this_grid().thread_rank();
 
     LOG("Trying to lock state of other process");
-    if (!otherThreadState->recvLock.tryLock()) {
+    if (!otherThreadState.recvLock.tryLock()) {
         LOG("Failed to lock state of other process");
         return;
     }
     LOG("State of other process is locked");
 
-    volatile CircularQueue<MessageDescriptor>& uq = otherThreadState->unexpectedRecv;
-    volatile CircularQueue<MessageDescriptor>& rq = otherThreadState->expectedRecv;
+    volatile auto& uq = otherThreadState.unexpectedRecv;
+    volatile auto& rq = otherThreadState.expectedRecv;
 
     volatile MessageDescriptor* matchedRecv = nullptr;
 
@@ -293,10 +319,14 @@ __device__ void progressStartedSend(PendingOperation& send) {
             send.state = PendingOperation::State::POSTED;
         }
     }
-
+    
     LOG("Unlock state of other process");
-    otherThreadState->recvLock.unlock();
+    otherThreadState.recvLock.unlock();
 
+    if (send.state != PendingOperation::State::STARTED) {
+        startedSkipGuard.commit();
+    }
+    
     if (send.state == PendingOperation::State::MATCHED) {
         progressMatchedSend(send);
     } else if (send.state == PendingOperation::State::POSTED) {
@@ -351,7 +381,7 @@ __device__ void progressSyncedSend(PendingOperation& send) {
         send.state = PendingOperation::State::COMPLETED;
     }
     LOG("copy chunk from local buffer to destionation buffer");
-    memcpy_volatile(send.fragment->data.get(0), srcPtr, copySize);
+    memcpy_volatile(&send.fragment->data[0], srcPtr, copySize);
 
     LOG("transfer ownership of shared fragment %p to other thread", send.fragment);
     send.fragment->ownerProcess = send.otherThread;
@@ -361,12 +391,12 @@ __device__ void progressSyncedSend(PendingOperation& send) {
     }
 }
 
-__device__ void progressSend(PendingOperation& send) {
+__device__ void progressSend(PendingOperation& send, ProgressState& state) {
     LOG("progressSend() %p", &send);
 
     switch (send.state) {
         case PendingOperation::State::STARTED:
-            progressStartedSend(send);
+            progressStartedSend(send, state);
             break;
         case PendingOperation::State::POSTED:
             progressPostedSend(send);
@@ -386,22 +416,31 @@ __device__ void progressSend(PendingOperation& send) {
     }
 }
 
-__device__ void progressStartedRecv(PendingOperation& recv) {
+__device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state) {
     LOG("progressStartedRecv() %p", &recv);
 
     int dst = cg::this_grid().thread_rank();
+    
+    if (state.isStartedRecvSkip(recv.otherThread)) {
+        LOG("Skip recv, because some earlier started recv is not processed");
+        return;
+    }
+    
+    auto startedSkipGuard = makeScopeGuard([&state,&recv](){ 
+        state.markStartedRecvSkip(recv.otherThread); 
+    });
 
-    volatile SharedThreadState* currentThreadState = sharedState().sharedThreadState.get(dst);
+    volatile SharedThreadState& currentThreadState = sharedState().sharedThreadState[dst];
 
     LOG("Trying to take lock for shared thread state of current thread");
-    if (!currentThreadState->recvLock.tryLock()) {
+    if (!currentThreadState.recvLock.tryLock()) {
         LOG("Failed to take lock");
         return;
     }
     LOG("Lock is taken successfully");
 
-    volatile CircularQueue<MessageDescriptor>& uq = currentThreadState->unexpectedRecv;
-    volatile CircularQueue<MessageDescriptor>& rq = currentThreadState->expectedRecv;
+    volatile auto& uq = currentThreadState.unexpectedRecv;
+    volatile auto& rq = currentThreadState.expectedRecv;
 
     volatile MessageDescriptor* matchedSend = nullptr;
 
@@ -443,8 +482,12 @@ __device__ void progressStartedRecv(PendingOperation& recv) {
     }
 
     LOG("Unlock shared state of current thread");
-    currentThreadState->recvLock.unlock();
+    currentThreadState.recvLock.unlock();
 
+    if (recv.state != PendingOperation::State::STARTED) {
+        startedSkipGuard.commit();
+    }
+    
     if (recv.state == PendingOperation::State::MATCHED) {
         progressMatchedRecv(recv);
     } else if (recv.state == PendingOperation::State::POSTED) {
@@ -494,17 +537,17 @@ __device__ void progressAllocatedRecv(PendingOperation& recv) {
     LOG("progressAllocatedRecv() %p", &recv);
 
     LOG("Trying to lock list of incoming fragments of thread %d", recv.otherThread);
-    volatile SharedThreadState* threadState = sharedState().sharedThreadState.get(recv.otherThread);
-    if (!threadState->fragLock.tryLock()) {
+    volatile SharedThreadState& threadState = sharedState().sharedThreadState[recv.otherThread];
+    if (!threadState.fragLock.tryLock()) {
         LOG("Failed to lock");
         return;
     }
     LOG("Locked successfully");
     
-    if (threadState->incomingFragments.full()) {
+    if (threadState.incomingFragments.full()) {
         LOG("incoming fragments list is full, retry later");
         LOG("unlocking list of incoming fragments");
-        threadState->fragLock.unlock();
+        threadState.fragLock.unlock();
         return;
     }
 
@@ -516,18 +559,16 @@ __device__ void progressAllocatedRecv(PendingOperation& recv) {
     fr.fragment = recv.fragment;
     fr.privatePointer = recv.foreignPendingOperation;
 
-    //LOG("Memory fragment %p, owner %d", recv.fragment, recv.fragment->ownerProcess);
-    
     assert(fr.fragment);
     assert(fr.privatePointer);
 
     LOG("Put new fragment %p (operation %p) into list of incoming fragments",
         fr.fragment, fr.privatePointer
     );
-    threadState->incomingFragments.push(fr);
+    threadState.incomingFragments.push(fr);
 
     LOG("Unlock list of incoming fragments of other thread %d", recv.otherThread);
-    threadState->fragLock.unlock();
+    threadState.fragLock.unlock();
 
     LOG("Change state to SYNCED");
     recv.state = PendingOperation::State::SYNCED;
@@ -576,7 +617,7 @@ __device__ void progressSyncedRecv(PendingOperation& recv) {
         recv.state = PendingOperation::State::COMPLETED;
     }
     LOG("Copy data from fragment buffer into local memory");
-    memcpy_volatile(dstPtr, recv.fragment->data.get(0), copySize);
+    memcpy_volatile(dstPtr, &recv.fragment->data[0], copySize);
 
     if (recv.state == PendingOperation::State::COMPLETED) {
         progressCompletedRecv(recv);
@@ -588,12 +629,12 @@ __device__ void progressSyncedRecv(PendingOperation& recv) {
     }
 }
 
-__device__ void progressRecv(PendingOperation& recv) {
+__device__ void progressRecv(PendingOperation& recv, ProgressState& state) {
     LOG("progressRecv() %p", &recv);
 
     switch (recv.state) {
         case PendingOperation::State::STARTED:
-            progressStartedRecv(recv);
+            progressStartedRecv(recv, state);
             break;
         case PendingOperation::State::POSTED:
             progressPostedRecv(recv);
@@ -618,18 +659,18 @@ __device__ void receiveFragmentPointers() {
 
     int curThread = cg::this_grid().thread_rank();
     SharedState& ss = sharedState();
-    volatile SharedThreadState* sts = ss.sharedThreadState.get(curThread);
+    volatile SharedThreadState& sts = ss.sharedThreadState[curThread];
 
     LOG("Trying to lock list of incoming fragment of current thread");
-    if (!sts->fragLock.tryLock()) {
+    if (!sts.fragLock.tryLock()) {
         LOG("Failed to lock");
         return;
     }
     LOG("Locked successfully");
 
     LOG("Looping over incoming fragments");
-    while (!sts->incomingFragments.empty()) {
-        volatile IncomingFragment* inFrag = sts->incomingFragments.head();
+    while (!sts.incomingFragments.empty()) {
+        volatile IncomingFragment* inFrag = sts.incomingFragments.head();
         assert(inFrag);
         LOG("Found incoming fragment at address %p", inFrag);
 
@@ -646,11 +687,11 @@ __device__ void receiveFragmentPointers() {
         pop->fragment = frag;
 
         LOG("Remove fragment from the list of incoming fragments");
-        sts->incomingFragments.pop(inFrag);
+        sts.incomingFragments.pop(inFrag);
     }
 
     LOG("Unlock list of incoming fragments of current thread");
-    sts->fragLock.unlock();
+    sts.fragLock.unlock();
 }
 
 __device__ void progress() {
@@ -658,18 +699,18 @@ __device__ void progress() {
 
     receiveFragmentPointers();
 
-    Vector<PendingOperation>& pops = threadPrivateState().getPendingOperations();
-    for (int i = 0; i < pops.size(); i++) {
-        PendingOperation& pop = pops[i];
-        if (!pop.unused) {
-            switch (pop.type) {
-                case PendingOperation::Type::SEND:
-                    progressSend(pop);
-                    break;
-                case PendingOperation::Type::RECV:
-                    progressRecv(pop);
-                    break;
-            }
+    ProgressState progressState;
+    
+    auto& pops = threadPrivateState().getPendingOperations();
+    for (volatile PendingOperation* ptr = pops.head(); ptr != nullptr; ptr = pops.next(ptr)) {
+        PendingOperation& pop = *(PendingOperation*)ptr; // TODO: remove ugly cast
+        switch (pop.type) {
+            case PendingOperation::Type::SEND:
+                progressSend(pop, progressState);
+                break;
+            case PendingOperation::Type::RECV:
+                progressRecv(pop, progressState);
+                break;
         }
     }
 }
