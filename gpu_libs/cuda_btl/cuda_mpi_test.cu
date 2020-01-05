@@ -333,3 +333,111 @@ TEST_CASE("Network flood", "[network_flood]") {
     REQUIRE(ok[1] == true);
     REQUIRE(ok[2] == true);
 }
+
+__global__ void all_to_all_kernel(
+    CudaMPI::SharedState* sharedState,
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext,
+    int numRanks,
+    bool* ok)
+{
+    CudaMPI::setSharedState(sharedState);
+    CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+    
+    int thisRank = cg::this_grid().thread_rank();
+    
+    const int numRepeats = 10;
+    const int dataSize = 16;
+    
+    int* localData = (int*) malloc(sizeof(int) * dataSize * numRepeats * numRanks);
+    assert(localData);
+    int* remoteData = (int*) malloc(sizeof(int) * dataSize * numRepeats * numRanks);
+    assert(remoteData);
+    
+    for (int rank = 0; rank < numRanks; rank++) {
+        for (int repeat = 0; repeat < numRepeats; repeat++) {
+            for (int i = 0; i < dataSize; i++) {
+                int idx = i + repeat * dataSize + rank * dataSize * numRepeats;
+                localData[idx] = i * repeat * rank;
+                remoteData[idx] = 0;
+            }
+        }
+    }
+    
+    CudaMPI::PendingOperation** send_po = (CudaMPI::PendingOperation**) malloc(numRepeats * numRanks * sizeof(CudaMPI::PendingOperation*));
+    CudaMPI::PendingOperation** recv_po = (CudaMPI::PendingOperation**) malloc(numRepeats * numRanks * sizeof(CudaMPI::PendingOperation*));
+    
+    int tag = 15;
+    int comm = 17;
+    
+    for (int repeat = 0; repeat < numRepeats; repeat++) {
+        for (int rank = 0; rank < numRanks; rank++) {
+            if (rank != thisRank) {
+                int idx = repeat * dataSize + rank * dataSize * numRepeats;
+                send_po[rank + repeat * numRanks] = CudaMPI::isend(
+                    rank, localData + idx, sizeof(int) * dataSize, comm, tag);
+                recv_po[rank + repeat * numRanks] = CudaMPI::irecv(
+                    rank, remoteData + idx, sizeof(int) * dataSize, comm, tag);
+            }
+        }
+    }
+    
+    for (int repeat = 0; repeat < numRepeats; repeat++) {
+        for (int rank = 0; rank < numRanks; rank++) {
+            if (rank != thisRank) {
+                CudaMPI::wait(send_po[rank + repeat * numRanks]);
+                CudaMPI::wait(recv_po[rank + repeat * numRanks]);
+            }
+        }
+    }
+    
+    ok[thisRank] = true;
+    for (int repeat = 0; repeat < numRepeats; repeat++) {
+        for (int rank = 0; rank < numRanks; rank++) {
+            if (rank != thisRank) {
+                for (int i = 0; i < dataSize; i++) {
+                    int idx = i + repeat * dataSize + rank * dataSize * numRepeats;
+                    if (i * repeat * thisRank != remoteData[idx]) {
+                        ok[thisRank] = false;
+                        printf("thisRank = %d, i = %d, repeat = %d, rank = %d, remoteData[%d] = %d\n", thisRank, i, repeat, rank, idx, remoteData[idx]);
+                    }
+                }
+            }
+        }
+    }
+    
+    free(send_po);
+    free(recv_po);
+    free(localData);
+}
+
+TEST_CASE("All to all", "[all_to_all]") {
+    const int numRanks = 10;
+    
+    CudaMPI::SharedState::Context sharedStateContext = {numRanks, 10, 10, 10, 10};
+    CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {400};
+
+    bool* ok;
+    CUDA_CHECK(cudaMallocManaged(&ok, numRanks * sizeof(bool)));
+    for (int i = 0; i < numRanks; i++) {
+        ok[i] = false;
+    }
+
+    CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+    
+    void* params[] = {
+        (void*)&sharedStatePtr,
+        (void*)&threadPrivateStateContext,
+        (void*)&numRanks,
+        (void*)&ok
+    };
+    
+    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)all_to_all_kernel, numRanks, 1, params));
+    CUDA_CHECK(cudaPeekAtLastError());
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    for (int i = 0; i < numRanks; i++) {
+        REQUIRE(ok[i] == true);
+    }
+}
+

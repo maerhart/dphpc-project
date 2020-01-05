@@ -287,10 +287,12 @@ public:
         int index = elem - messages.get(0);
         assert(0 <= index && index < messages.size());
         active.set(index, false);
-        while (!*active.get(index) && !bufferState.empty()) {
-            int removedIndex = bufferState.pop();
-            assert(removedIndex == index);
-            index = (index + 1) % messages.size();
+        if (bufferState.head == index) {
+            while (!*active.get(index) && !bufferState.empty()) {
+                int removedIndex = bufferState.pop();
+                assert(removedIndex == index);
+                index = (index + 1) % messages.size();
+            }
         }
     }
 

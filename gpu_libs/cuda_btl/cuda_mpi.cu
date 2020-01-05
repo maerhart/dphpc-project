@@ -82,7 +82,7 @@ __device__ PendingOperation* isend(int dst, const void* data, int count, int com
     PendingOperation* po = threadPrivateState().allocatePendingOperation();
     while (!po) {
         po = threadPrivateState().allocatePendingOperation();
-        LOG("WARNING: Pending operations limit is reached, isend can be blocked\n");
+        printf("WARNING: Pending operations limit is reached in isend, this can cause a deadlock\n");
         progress();
     }
 
@@ -108,7 +108,7 @@ __device__ PendingOperation* irecv(int src, void* data, int count, int comm, int
     PendingOperation* po = threadPrivateState().allocatePendingOperation();
     while (!po) {
         po = threadPrivateState().allocatePendingOperation();
-        LOG("WARNING: Pending operations limit is reached, irecv can be blocked\n");
+        LOG("WARNING: Pending operations limit is reached in irecv, this can cause a deadlock\n");
         progress();
     }
 
@@ -162,6 +162,13 @@ __device__ void progressAllocatedSend(PendingOperation& send) {
         return;
     }
     LOG("fragment lock succeed");
+    
+    if (threadState->incomingFragments.full()) {
+        LOG("incoming fragments list is full, retry later");
+        LOG("unlocking list of incoming fragments");
+        threadState->fragLock.unlock();
+        return;
+    }
 
     IncomingFragment fr;
     assert(send.fragment); // fragment should be allocated
@@ -273,14 +280,18 @@ __device__ void progressStartedSend(PendingOperation& send) {
     } else {
         LOG("Matching receive is not found, post send in unexpected receives of other process");
 
-        MessageDescriptor md;
-        md.comm = send.comm;
-        md.src = src;
-        md.tag = send.tag;
-        md.privatePointer = &send;
-        uq.push(md);
-        LOG("Change state to POSTED");
-        send.state = PendingOperation::State::POSTED;
+        if (uq.full()) {
+            LOG("List of unexpected receives is full, retry later");
+        } else {
+            MessageDescriptor md;
+            md.comm = send.comm;
+            md.src = src;
+            md.tag = send.tag;
+            md.privatePointer = &send;
+            uq.push(md);
+            LOG("Change state to POSTED");
+            send.state = PendingOperation::State::POSTED;
+        }
     }
 
     LOG("Unlock state of other process");
@@ -415,15 +426,20 @@ __device__ void progressStartedRecv(PendingOperation& recv) {
         recv.state = PendingOperation::State::MATCHED;
     } else {
         LOG("Add message to the list of expected receives of current threads");
-        MessageDescriptor md;
-        md.comm = recv.comm;
-        md.src = recv.otherThread;
-        md.tag = recv.tag;
-        md.privatePointer = &recv;
-        rq.push(md);
+        
+        if (rq.full()) {
+            LOG("List of expected receives is full, retry later");
+        } else {
+            MessageDescriptor md;
+            md.comm = recv.comm;
+            md.src = recv.otherThread;
+            md.tag = recv.tag;
+            md.privatePointer = &recv;
+            rq.push(md);
 
-        LOG("Change state to POSTED");
-        recv.state = PendingOperation::State::POSTED;
+            LOG("Change state to POSTED");
+            recv.state = PendingOperation::State::POSTED;
+        }
     }
 
     LOG("Unlock shared state of current thread");
@@ -484,6 +500,13 @@ __device__ void progressAllocatedRecv(PendingOperation& recv) {
         return;
     }
     LOG("Locked successfully");
+    
+    if (threadState->incomingFragments.full()) {
+        LOG("incoming fragments list is full, retry later");
+        LOG("unlocking list of incoming fragments");
+        threadState->fragLock.unlock();
+        return;
+    }
 
     LOG("RECEIVE: %p, FRAGMENT: %p", &recv, recv.fragment);
     
