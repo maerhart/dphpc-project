@@ -112,17 +112,6 @@ int main(int argc, char* argv[]) {
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
     CudaMPI::SharedState* sharedState = sharedStateHolder.get();
 
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
-    threadPrivateStateContext.pendingBufferSize = 20;
-
-    // args passed into kernel function
-    void* params[] = {
-        (void*)&argcWithoutGPUMPI,
-        (void*)&argvInUnifiedMemory,
-        (void*)&sharedState,
-        (void*)&threadPrivateStateContext
-    };
-
     //create cuda streams for each device
     std::vector<cudaStream_t> cudaStreams(deviceCount);
     for(int i = 0; i < deviceCount; i++) {
@@ -130,12 +119,32 @@ int main(int argc, char* argv[]) {
         CUDA_CHECK(cudaStreamCreate(&cudaStreams[i]));
     }
 
+    std::vector<CudaMPI::ThreadPrivateState::Context> threadPrivateStateContext(deviceCount);
+    for(int device = 0; device < deviceCount; device++) {
+        threadPrivateStateContext[device].pendingBufferSize = 20;
+
+        int peakClockKHz;
+        CUDA_CHECK(cudaDeviceGetAttribute(&peakClockKHz, cudaDevAttrClockRate, device));
+        threadPrivateStateContext[device].peakClockKHz = peakClockKHz;
+    }
+
+    // args passed into kernel function
+    std::vector<std::vector<void*>> params(deviceCount);
+    for(int i = 0; i < deviceCount; i++) {
+        params[i] = {
+            (void*)&argcWithoutGPUMPI,
+            (void*)&argvInUnifiedMemory,
+            (void*)&sharedState,
+            (void*)&threadPrivateStateContext[i],
+        };
+    }
+
     std::vector<cudaLaunchParams> launchParamsList(deviceCount);
     for(int i = 0; i < deviceCount; i++) {
         launchParamsList[i].func = (void*) __gpu_main_caller;
         launchParamsList[i].gridDim = blocksPerGrid;
         launchParamsList[i].blockDim = threadsPerBlock;
-        launchParamsList[i].args = params;
+        launchParamsList[i].args = params[i].data();
         launchParamsList[i].sharedMem = 0;
         launchParamsList[i].stream = cudaStreams[i];
     }

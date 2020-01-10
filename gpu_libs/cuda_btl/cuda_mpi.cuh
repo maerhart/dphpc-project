@@ -448,6 +448,7 @@ struct ThreadPrivateState {
 
     struct Context {
         int pendingBufferSize;
+        int peakClockKHz;
     };
 
     __device__ PendingOperation* allocatePendingOperation();
@@ -460,10 +461,13 @@ struct ThreadPrivateState {
         __device__ ~Holder();
     };
 
+    const int peakClockKHz;
+
 private:
 
     __device__ explicit ThreadPrivateState(const Context& ctx)
         : pendingOperations(ctx.pendingBufferSize)
+        , peakClockKHz(ctx.peakClockKHz)
     {
     }
 
