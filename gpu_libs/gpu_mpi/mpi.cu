@@ -105,15 +105,10 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
 }
 
 __device__ double MPI_Wtime(void) {
-<<<<<<< HEAD
-//     NOT_IMPLEMENTED // TODO
-    return 0.;
-=======
     int peakClockKHz = CudaMPI::threadPrivateState().peakClockKHz;
     auto clock = clock64();
     double seconds = clock * 0.001 / peakClockKHz;
     return seconds;
->>>>>>> MPI_Wtime
 }
 
 __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
