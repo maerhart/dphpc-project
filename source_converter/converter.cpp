@@ -35,9 +35,12 @@ public :
         if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("func")) {
             if (func->isMain()) {
                 llvm::errs() << "Detected main function\n";
-                //mRewriter.ReplaceText(func->getNameInfo().getSourceRange(), "__gpu_main");
-                SourceRange mainSrcRange(func->getBeginLoc(), func->getBody()->getBeginLoc());
-                mRewriter.ReplaceText(mainSrcRange, "__device__ int __gpu_main(int argc, char** argv) {");
+
+                mRewriter.ReplaceText(func->getNameInfo().getSourceRange(), "__gpu_main");
+
+                clang::TypeLoc tl = func->getTypeSourceInfo()->getTypeLoc();
+                clang::FunctionTypeLoc ftl = tl.getAsAdjusted<FunctionTypeLoc>();
+                mRewriter.ReplaceText(ftl.getParensRange(), "(int argc, char** argv)");
             } else {
                 //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
                 mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
@@ -80,7 +83,14 @@ public:
     void EndSourceFileAction() override {
         for (auto I = mRewriter.buffer_begin(), E = mRewriter.buffer_end(); I != E; ++I) {
             FileID fileID = I->first;
+            RewriteBuffer& rb = I->second;
+            if (fileID.isInvalid()) {
+                llvm::errs() << "fileID == 0\n";
+                continue;
+            }
+
             const FileEntry *fileEntry = mRewriter.getSourceMgr().getFileEntryForID(fileID);
+            assert(fileEntry);
             StringRef fileName = fileEntry->getName();
 
             // silly detection of system headers:

@@ -3,8 +3,11 @@
 #include "assert.h.cuh"
 
 __device__ int strcmp(const char *s1, const char *s2) {
-    NOT_IMPLEMENTED
-    return 0;
+    while (*s1 != '\0' && *s1 == *s2) {
+        s1++;
+        s2++;
+    }
+    return s1 - s2;
 }
 
 __device__ int strncmp(const char *s1, const char *s2, size_t n) {
@@ -15,6 +18,19 @@ __device__ int strncmp(const char *s1, const char *s2, size_t n) {
 __device__ char *strcpy(char *dest, const char *src) {
     for (size_t i = 0; src[i] != '\0'; i++) {
         dest[i] = src[i];
+    }
+    return dest;
+}
+
+__device__ char *strncpy(char *dest, const char *src, size_t n) {
+    size_t i = 0;
+    while (i < n && src[i] != '\0') {
+        dest[i] = src[i];
+        i++;
+    }
+    while (i < n) {
+        dest[i] = '\0';
+        i++;
     }
     return dest;
 }

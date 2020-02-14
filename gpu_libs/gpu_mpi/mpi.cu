@@ -23,7 +23,8 @@ __device__ int MPI_Init(int *argc, char ***argv) {
 }
 
 __device__ int MPI_Finalize(void) {
-    // nothing to do
+    // TODO: due to exit() you need to perform
+    // all MPI related memory deallocation here
     return MPI_SUCCESS;
 }
 

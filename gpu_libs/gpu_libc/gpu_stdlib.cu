@@ -41,9 +41,8 @@ __device__ char *getenv(const char *name) {
 }
 
 __device__ void exit(int status) {
-    NOT_IMPLEMENTED
+    asm("exit;");
 }
-
 
 __device__ double strtod(const char *nptr, char **endptr) {
     NOT_IMPLEMENTED

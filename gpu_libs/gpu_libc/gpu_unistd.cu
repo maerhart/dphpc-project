@@ -1,9 +1,14 @@
 #include "unistd.h.cuh"
 
 #include "assert.h.cuh"
+#include "string.h.cuh"
 
 __device__ int gethostname(char *name, size_t len) {
-    NOT_IMPLEMENTED
+    const char hostname[] = "GPU thread";
+    if (sizeof(hostname) < len) {
+        len = sizeof(hostname);
+    }
+    strncpy(name, hostname, len);
     return 0;
 }
 

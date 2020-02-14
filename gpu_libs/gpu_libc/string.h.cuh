@@ -12,6 +12,9 @@ __device__ int strncmp(const char *s1, const char *s2, size_t n);
 #define strcpy __gpu_strcpy
 __device__ char *strcpy(char *dest, const char *src);
 
+#define strncpy __gpu_strncpy
+__device__ char *strncpy(char *dest, const char *src, size_t n);
+
 #define strstr __gpu_strstr
 __device__ char *strstr(const char *haystack, const char *needle);
 

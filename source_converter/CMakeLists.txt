@@ -74,3 +74,5 @@ target_link_libraries(converter PRIVATE
 set_target_properties(converter PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${llvm_BINARY_DIR}/bin"
 )
+
+target_compile_options(converter PRIVATE -g)
