@@ -41,10 +41,12 @@ public :
                 clang::TypeLoc tl = func->getTypeSourceInfo()->getTypeLoc();
                 clang::FunctionTypeLoc ftl = tl.getAsAdjusted<FunctionTypeLoc>();
                 mRewriter.ReplaceText(ftl.getParensRange(), "(int argc, char** argv)");
-            } else {
-                //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
-                mRewriter.InsertTextBefore(func->getSourceRange().getBegin(), "__device__ ");
             }
+            //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
+            SourceLocation unexpandedLocation = func->getSourceRange().getBegin();
+            SourceLocation expandedLocation = mRewriter.getSourceMgr().getFileLoc(unexpandedLocation);
+            bool error = mRewriter.InsertTextBefore(expandedLocation, "__device__ ");
+            assert(!error);
         }
         if (const VarDecl *var = Result.Nodes.getNodeAs<VarDecl>("globalVar")) {
             //llvm::errs() << "GLOBAL VAR!!!\n";
