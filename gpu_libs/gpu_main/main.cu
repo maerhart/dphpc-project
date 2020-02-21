@@ -10,12 +10,15 @@
 #include <string>
 #include <vector>
 #include <iostream>
+#include <set>
 
 #include <cxxopts.hpp>
 
 #include "common.h"
 
 #include "cuda_mpi.cuh"
+
+#include "libc_processor.cuh"
 
 void* copyArgsToUnifiedMemory(int argc, char** argv) {
     // argv is a set of "pointers" to "strings"
@@ -149,18 +152,35 @@ int main(int argc, char* argv[]) {
         launchParamsList[i].stream = cudaStreams[i];
     }
 
-    std::cerr << "Starting kernel!" << std::endl;
+    std::cerr << "GPUMPI: Starting kernel!" << std::endl;
     // here we actually call __gpu_main
     CUDA_CHECK(cudaLaunchCooperativeKernelMultiDevice(launchParamsList.data(), deviceCount));
-    std::cerr << "Finishing kernel!" << std::endl;
+    std::cerr << "GPUMPI: Processing messages from device threads" << std::endl;
 
+    std::set<int> unfinishedThreads;
+    for (int i = 0; i < sharedStateContext.numThreads; i++) {
+        unfinishedThreads.insert(i);
+    }
+
+    while (!unfinishedThreads.empty()) {
+        sharedState->deviceToHostCommunicator.processIncomingMessages([&](void* ptr, size_t size, int threadRank) {
+            if (ptr == 0 && size == 0) {
+                int erased = unfinishedThreads.erase(threadRank);
+                assert(erased);
+            } else {
+                process_gpu_libc(ptr, size);
+            }
+        });
+    }
+
+    std::cerr << "GPUMPI: Finishing kernel!" << std::endl;
     // wait while all devices are finishing computations
     for(int i = 0; i < deviceCount; i++) {
         CUDA_CHECK(cudaSetDevice(i));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    std::cerr << "Synchronized!" << std::endl;
+    std::cerr << "GPUMPI: Synchronized!" << std::endl;
 
     // release all resources
 
@@ -168,6 +188,6 @@ int main(int argc, char* argv[]) {
 
     MPI_CHECK(MPI_Finalize());
 
-    std::cerr << "MPI finished!" << std::endl;
+    std::cerr << "GPUMPI: MPI finished!" << std::endl;
 }
 

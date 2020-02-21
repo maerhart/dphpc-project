@@ -7,5 +7,6 @@ add_library(gpu_libc
     gpu_unistd.cu
     mp4_printf.cu
     sys/gpu_time.cu
+    errno.cu
     )
 target_include_directories(gpu_libc PUBLIC sys)

@@ -425,7 +425,7 @@ private:
     bool mStartedRecvSkip;
 };
 
-__device__ void progress();
+__host__ __device__ void progress();
 
 __device__ void progressSend(PendingOperation& send, ProgressState& state);
 __device__ void progressRecv(PendingOperation& recv, ProgressState& state);
@@ -515,26 +515,109 @@ struct SharedThreadState {
     CircularQueue<IncomingFragment, ManagedVector> incomingFragments;
 };
 
+struct DeviceToHostCommunicator {
+    struct Message {
+        __host__ __device__ Message()
+            : ptr(nullptr), size(0), threadRank(-1) {}
+
+        __host__ __device__ Message(void* ptr, size_t size, int threadRank)
+            : ptr(ptr), size(size), threadRank(threadRank) {}
+
+        __host__ __device__ volatile Message& operator=(const Message& rhs) volatile {
+            ptr = rhs.ptr;
+            size = rhs.size;
+            threadRank = rhs.threadRank;
+            return *this;
+        }
+
+        void* ptr;
+        size_t size;
+        int threadRank;
+    };
+
+    DeviceToHostCommunicator(size_t queueSize, size_t numThreads);
+
+    __device__ void delegateToHost(void* ptr, size_t size);
+
+    template <typename F>
+    void processIncomingMessages(F&& callback) {
+        if (!lock.tryLock()) return;
+        while (!queue.empty()) {
+            volatile Message* message = queue.head();
+            callback(message->ptr, message->size, message->threadRank);
+            cudaGlobalFence();
+            hostFinished[message->threadRank] = true;
+            queue.pop(message);
+        }
+        lock.unlock();
+    }
+
+    ManagedMemoryLock lock;
+    CircularQueue<Message, ManagedVector> queue;
+
+    // for each device thread store variable that says
+    // if the host is finished processing device request
+    ManagedVector<bool> hostFinished;
+};
+
+struct FreeManagedMemory {
+
+    FreeManagedMemory(size_t size);
+
+    __host__ __device__ void* allocate(size_t size);
+    __host__ __device__ void free(void* ptr);
+
+private:
+
+    enum { FREE = 0, USED = 1 };
+
+    struct BlockDescriptor {
+        char status;
+        size_t end;
+    };
+
+    __host__ __device__ void compactionWithNextBlocks(size_t currentBlock);
+
+    ManagedMemoryLock lock;
+    ManagedVector<char> buffer;
+};
+
 class SharedState {
 public:
     struct Context {
-        int numThreads;
-        int recvListSize;
-        int numFragments;
-        int fragmentSize;
-        int numIncomingFragments;
+        int numThreads{-1};
+        int recvListSize{16};
+        int numFragments{256};
+        int fragmentSize{1024};
+        int numIncomingFragments{64};
+        int deviceToHostQueueSize{128};
+        int freeMemorySize{(1 << 20) * 512};
+
+        bool valid() const {
+            if (numThreads <= 0) return false;
+            if (recvListSize <= 0) return false;
+            if (numFragments <= 0) return false;
+            if (fragmentSize <= 0) return false;
+            if (numIncomingFragments <= 0) return false;
+            if (deviceToHostQueueSize <= 0) return false;
+            if (freeMemorySize <= 0) return false;
+            return true;
+        }
     };
 
 private:
     SharedState(const Context& ctx)
         : sharedThreadState(ctx.numThreads, ctx.recvListSize, ctx.numIncomingFragments)
         , sharedFragmentBuffer(ctx.numFragments, ctx.fragmentSize)
+        , deviceToHostCommunicator(ctx.deviceToHostQueueSize, ctx.numThreads)
+        , freeManagedMemory(ctx.freeMemorySize)
     {
     }
 
 public:
     struct Holder {
         Holder(const Context& ctx) {
+            assert(ctx.valid());
             CUDA_CHECK(cudaMallocManaged(&sharedState, sizeof(SharedState)));
             new (sharedState) SharedState(ctx);
             assert(sharedState);
@@ -550,6 +633,10 @@ public:
 
     ManagedVector<SharedThreadState> sharedThreadState;
     SharedFragmentBuffer sharedFragmentBuffer;
+
+    DeviceToHostCommunicator deviceToHostCommunicator;
+
+    FreeManagedMemory freeManagedMemory;
 };
 
 __device__ SharedState& sharedState();

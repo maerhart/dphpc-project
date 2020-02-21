@@ -8,16 +8,6 @@ __device__ void qsort(void *base, size_t nmemb, size_t size,
     NOT_IMPLEMENTED
 }
 
-__device__ int atoi(const char *nptr) {
-    NOT_IMPLEMENTED
-    return 0;
-}
-
-__device__ long atol(const char *nptr) {
-    NOT_IMPLEMENTED
-    return 0;
-}
-
 __device__ void *realloc(void *ptr, size_t size) {
     NOT_IMPLEMENTED
     return ptr;
@@ -42,11 +32,6 @@ __device__ char *getenv(const char *name) {
 
 __device__ void exit(int status) {
     asm("exit;");
-}
-
-__device__ double strtod(const char *nptr, char **endptr) {
-    NOT_IMPLEMENTED
-    return 0.0;
 }
 
 __device__ int posix_memalign(void **memptr, size_t alignment, size_t size) {

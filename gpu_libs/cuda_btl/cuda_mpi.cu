@@ -20,13 +20,13 @@ __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n
 template <typename T>
 class ScopeGuard {
 public:
-    __device__ ScopeGuard(T func) : run(true), func(func) {}
-    __device__ ScopeGuard(ScopeGuard<T>&& rhs)
+    __host__ __device__ ScopeGuard(T func) : run(true), func(func) {}
+    __host__ __device__ ScopeGuard(ScopeGuard<T>&& rhs)
         : run(rhs.run)
         , func(std::move(rhs.func))
     { rhs.run = false; }
-    __device__ ~ScopeGuard() { if (run) func(); }
-    __device__ void commit() { run = false; }
+    __host__ __device__ ~ScopeGuard() { if (run) func(); }
+    __host__ __device__ void commit() { run = false; }
 private:
     ScopeGuard(const ScopeGuard<T>& rhs) = delete;
     void operator=(const ScopeGuard<T>& rhs) = delete;
@@ -36,7 +36,7 @@ private:
 };
 
 template <typename T>
-__device__ ScopeGuard<T> makeScopeGuard(T func) {
+__host__ __device__ ScopeGuard<T> makeScopeGuard(T func) {
     return ScopeGuard<T>(func);
 }
 
@@ -694,7 +694,9 @@ __device__ void receiveFragmentPointers() {
     sts.fragLock.unlock();
 }
 
-__device__ void progress() {
+__host__ __device__ void progress() {
+    // this function is no op on host
+#if defined(__CUDA_ARCH__)
     LOG("progress()");
 
     receiveFragmentPointers();
@@ -713,6 +715,7 @@ __device__ void progress() {
                 break;
         }
     }
+#endif
 }
 
 __device__ bool test(PendingOperation* op) {
@@ -738,6 +741,138 @@ __device__ void wait(PendingOperation* op) {
     LOG("wait()");
     assert(op->canBeFreed == false);
     while (!test(op)) {}
+}
+
+
+DeviceToHostCommunicator::DeviceToHostCommunicator(size_t queueSize, size_t numThreads)
+    : queue(queueSize)
+    , hostFinished(numThreads, false)
+{
+}
+
+__device__ void DeviceToHostCommunicator::delegateToHost(void* ptr, size_t size) {
+    int threadRank = cg::this_multi_grid().thread_rank();
+    assert(hostFinished[threadRank] == false);
+
+    while (true) {
+
+        while (!lock.tryLock()) {
+            progress();
+        }
+
+        auto unlockGuard = makeScopeGuard([&](){ lock.unlock(); });
+
+        if (queue.full()) {
+            lock.unlock();
+            unlockGuard.commit();
+
+            progress();
+        } else {
+            queue.push(Message(ptr, size, threadRank));
+
+            break;
+        }
+    }
+
+    // waiting for host
+    while (!hostFinished[threadRank]) {
+        progress();
+    }
+
+    hostFinished[threadRank] = false;
+}
+
+
+FreeManagedMemory::FreeManagedMemory(size_t size)
+    : buffer(size)
+{
+    assert(buffer.size() > sizeof(BlockDescriptor));
+    BlockDescriptor* memBlock = (BlockDescriptor*)(&buffer[0]);
+    memBlock->status = FREE;
+    memBlock->end = buffer.size();
+}
+
+__host__ __device__ void* FreeManagedMemory::allocate(size_t size) {
+    while (!lock.tryLock()) {
+        progress();
+    }
+
+    auto unlockGuard = makeScopeGuard([&](){ lock.unlock(); });
+
+    size_t blockStart = 0;
+    while (true) {
+        BlockDescriptor* memBlock = (BlockDescriptor*)(&buffer[blockStart]);
+        size_t blockDataStart = blockStart + sizeof(BlockDescriptor);
+        assert(memBlock->end > blockStart);
+        size_t blockUsefulSize = memBlock->end - blockStart;
+
+        compactionWithNextBlocks(blockStart);
+
+        if (memBlock->status == FREE && blockUsefulSize >= size) {
+            // allocate block
+            size_t blockSizeLeft = blockUsefulSize - size;
+            if (blockSizeLeft <= sizeof(BlockDescriptor)) {
+                // utilize all memory since it will not be possibe to use it anyway
+                memBlock->status = USED;
+                return (void*) &buffer[blockDataStart];
+            } else {
+                // normal allocation, split buffer into two parts: first is allocated, the second is free
+                size_t newBlockEnd = blockDataStart + size;
+
+                // second free block
+                BlockDescriptor* newFreeBlock = (BlockDescriptor*)(&buffer[newBlockEnd]);
+                newFreeBlock->status = FREE;
+                newFreeBlock->end = memBlock->end;
+
+                // first used block
+                memBlock->status = USED;
+                memBlock->end = newBlockEnd;
+            }
+        }
+
+        blockStart = memBlock->end;
+
+        assert(blockStart <= buffer.size());
+
+        if (blockStart == buffer.size()) {
+            return nullptr;
+        }
+    }
+}
+
+__host__ __device__ void FreeManagedMemory::free(void* ptr) {
+    while (!lock.tryLock()) {
+        progress();
+    }
+
+    auto unlockGuard = makeScopeGuard([&](){ lock.unlock(); });
+
+    assert(&buffer[0] <= ptr);
+    size_t pos = ((char*)ptr) - &buffer[0];
+    assert(pos < buffer.size());
+
+    BlockDescriptor* memBlock = (BlockDescriptor*)(&ptr);
+    assert(memBlock->status == USED);
+
+    memBlock->status = FREE;
+}
+
+__host__ __device__ void FreeManagedMemory::compactionWithNextBlocks(size_t currentBlock) {
+    BlockDescriptor* current = (BlockDescriptor*)(&buffer[currentBlock]);
+
+    while (true) {
+        size_t nextBlock = current->end;
+        assert(nextBlock <= buffer.size());
+
+        if (nextBlock == buffer.size()) break;
+
+        BlockDescriptor* next = (BlockDescriptor*)(&buffer[nextBlock]);
+        if (next->status == USED) break;
+
+        assert(next->status == FREE);
+
+        current->end = next->end;
+    }
 }
 
 } // namespace

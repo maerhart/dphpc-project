@@ -1,7 +1,7 @@
 #ifndef ERRNO_H_CUH
 #define ERRNO_H_CUH
 
-__device__ int errno;
+extern __device__ int errno;
 
 #define EPERM		 1	/* Operation not permitted */
 #define ENOENT		 2	/* No such file or directory */

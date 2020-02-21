@@ -23,3 +23,5 @@ add_library(cuda_btl cuda_mpi.cu)
 
 add_executable(cuda_btl_test cuda_mpi_test.cu cuda_mpi.cu)
 #target_compile_definitions(cuda_btl_test PRIVATE ENABLE_GPU_MPI_LOG)
+
+target_compile_options(cuda_btl_test PRIVATE -g)
