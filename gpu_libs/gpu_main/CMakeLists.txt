@@ -1,7 +1,7 @@
 find_package(MPI REQUIRED CXX)
 
 add_library(gpu_main
-    main.cu libc_processor.cu
+    main.cu libc_processor.cu device_host_comm.cu
     )
 target_include_directories(gpu_main PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 target_link_libraries(gpu_main PUBLIC ${MPI_CXX_LIBRARIES})

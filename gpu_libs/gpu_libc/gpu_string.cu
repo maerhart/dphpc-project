@@ -175,9 +175,10 @@ __device__ char *strtok_r(char *s, const char *delim, char** ptrptr) {
   return tmp;
 }
 
+__device__ static const char message[] = "ERROR!";
+
 __device__ char* strerror(int errnum) {
   //FIXME this is wrong, implement correctly when we have errno, for now this throws warning so it is easy to see
-  char message[] = "ERROR!";
   return (char*)message;
 }
 
