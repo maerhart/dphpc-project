@@ -447,6 +447,17 @@ __device__ void progressCompletedSend(PendingOperation& send);
 struct ThreadPrivateState {
 
     struct Context {
+        Context() :
+            pendingBufferSize(20),
+            peakClockKHz(-1)
+            {}
+
+        __device__ bool valid() const {
+            if (pendingBufferSize <= 0) return false;
+            if (peakClockKHz <= 0) return false;
+            return true;
+        }
+
         int pendingBufferSize;
         int peakClockKHz;
     };

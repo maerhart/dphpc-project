@@ -74,6 +74,7 @@ __device__ ThreadPrivateState& threadPrivateState() {
 }
 
 __device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
+    assert(ctx.valid());
     LOG("initializeThreadPrivateState");
     if (0 == cg::this_grid().thread_rank()) {
         gThreadLocalState = (ThreadPrivateState*)malloc(cg::this_grid().size() * sizeof(ThreadPrivateState));

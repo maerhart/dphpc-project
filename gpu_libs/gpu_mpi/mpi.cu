@@ -110,9 +110,8 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
 }
 
 __device__ double MPI_Wtime(void) {
-    int peakClockKHz = CudaMPI::threadPrivateState().peakClockKHz;
     auto clock = clock64();
-    double seconds = clock * 0.001 / peakClockKHz;
+    double seconds = clock * MPI_Wtick();
     return seconds;
 }
 
@@ -196,7 +195,8 @@ __device__ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int d
 }
 
 __device__ double MPI_Wtick() {
-    return 0.0;
+    int peakClockKHz = CudaMPI::threadPrivateState().peakClockKHz;
+    return 0.001 / peakClockKHz;
 }
 __device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group) {
     return MPI_SUCCESS;

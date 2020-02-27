@@ -30,8 +30,12 @@ __device__ char *getenv(const char *name) {
     return stub;
 }
 
-__device__ void exit(int status) {
+__device__ void exit(int) {
     asm("exit;");
+}
+
+__device__ void abort() {
+    asm("trap;");
 }
 
 __device__ int posix_memalign(void **memptr, size_t alignment, size_t size) {

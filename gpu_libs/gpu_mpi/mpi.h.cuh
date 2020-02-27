@@ -14,7 +14,6 @@ typedef struct MPI_Status_t {} MPI_Status;
 typedef struct MPI_Group_t {} MPI_Group;
 typedef struct MPI_Request_t {} MPI_Request;
 
-
 __device__ int MPI_Init(int *argc, char ***argv);
 __device__ int MPI_Finalize(void);
 __device__ int MPI_Comm_size(MPI_Comm comm, int *size);

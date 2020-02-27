@@ -17,7 +17,11 @@ set(CMAKE_CUDA_FLAGS
 
 
 add_executable(cuda_btl_test cuda_mpi_test.cu)
-target_link_libraries(cuda_btl_test cuda_btl)
+target_link_libraries(cuda_btl_test cuda_btl gpu_mpi gpu_libc)
 #target_compile_definitions(cuda_btl_test PRIVATE ENABLE_GPU_MPI_LOG)
 target_compile_options(cuda_btl_test PRIVATE -g)
 add_test(cuda_btl_test cuda_btl_test)
+
+add_executable(sample_test sample_test.cu)
+target_link_libraries(sample_test cuda_btl)
+add_test(sample_test sample_test)

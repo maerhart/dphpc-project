@@ -31,6 +31,8 @@ __device__ char *getenv(const char *name);
 #define exit __gpu_exit
 __device__ void exit(int status);
 
+#define abort __gpu_abort
+__device__ void abort();
 
 #define strtod __gpu_strtod
 __device__ double strtod(const char *nptr, char **endptr);

@@ -1,58 +1,46 @@
-#include "cuda_mpi.cuh"
+#include "test_runner.cuh"
 
-#define CATCH_CONFIG_MAIN
-#include "catch.hpp"
+#include "mpi.h.cuh"
+
+#define TO_STR(x) TO_STR_2(x)
+#define TO_STR_2(x) #x
+#define MPI_CHECK(expr) \
+    if ((expr) != MPI_SUCCESS) { \
+        printf("MPI ERROR: " __FILE__ ":" TO_STR(__LINE__) ": " #expr "\n"); \
+        asm("trap;"); \
+    }
 
 namespace cg = cooperative_groups;
 
+struct SingleIntKernel {
+    static __device__ void run(bool& ok)
+    {
+        int rank = -1;
+        MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
 
-__global__ void single_int_kernel(
-    CudaMPI::SharedState* sharedState,
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext,
-    int* res)
-{
-    CudaMPI::setSharedState(sharedState);
-    CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+        if (rank == 0) {
+            int x = 3456;
 
-    if (cg::this_grid().thread_rank() == 0) {
-        int x = 3456;
+            CudaMPI::PendingOperation* op = CudaMPI::isend(1, &x, sizeof(int), 0, 15);
 
-        CudaMPI::PendingOperation* op = CudaMPI::isend(1, &x, sizeof(int), 0, 15);
+            CudaMPI::wait(op);
 
-        CudaMPI::wait(op);
-    } else if (cg::this_grid().thread_rank() == 1) {
-        int x = 0;
+            ok = true;
+        } else if (rank == 1) {
+            int x = 0;
 
-        CudaMPI::PendingOperation* op = CudaMPI::irecv(0, &x, sizeof(int), 0, 15);
+            CudaMPI::PendingOperation* op = CudaMPI::irecv(0, &x, sizeof(int), 0, 15);
 
-        CudaMPI::wait(op);
+            CudaMPI::wait(op);
 
-        *res = x;
+            ok = x == 3456;
+        }
     }
-}
+};
 
 TEST_CASE("Transfer single integer", "[single_int]") {
-    CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
-    CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
-
-    int* res;
-    CUDA_CHECK(cudaMallocManaged(&res, sizeof(int)));
-    *res = 0;
-
-        CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
-    
-    void* params[] = {
-        (void*)&sharedStatePtr, 
-        (void*)&threadPrivateStateContext,
-        (void*)&res
-    };
-    
-    CUDA_CHECK(cudaLaunchCooperativeKernel((void*)single_int_kernel, 3, 1, params));
-    CUDA_CHECK(cudaPeekAtLastError());
-    CUDA_CHECK(cudaDeviceSynchronize());
-
-    REQUIRE(*res == 3456);
+    TestRunner testRunner(2);
+    testRunner.run<SingleIntKernel>();
 }
 
 
@@ -87,7 +75,8 @@ __global__ void transfer_array_kernel(
 TEST_CASE("Transfer array", "[array]") {
     CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.peakClockKHz = 100;
 
     bool* ok;
     CUDA_CHECK(cudaMallocManaged(&ok, sizeof(bool)));
@@ -160,7 +149,8 @@ __global__ void send_recv_kernel(
 TEST_CASE("Send receive", "[send_recv]") {
     CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.peakClockKHz = 100;
 
     bool* ok;
     CUDA_CHECK(cudaMallocManaged(&ok, 2 * sizeof(bool)));
@@ -229,7 +219,8 @@ __global__ void repeat_sendrecv_kernel(
 TEST_CASE("Repeat send recv", "[repeat_sendrecv]") {
     CudaMPI::SharedState::Context sharedStateContext = {2, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.peakClockKHz = 100;
 
     bool* ok;
     CUDA_CHECK(cudaMallocManaged(&ok, 2 * sizeof(bool)));
@@ -309,7 +300,8 @@ __global__ void network_flood_kernel(
 TEST_CASE("Network flood", "[network_flood]") {
     CudaMPI::SharedState::Context sharedStateContext = {3, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {20};
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.peakClockKHz = 100;
 
     bool* ok;
     CUDA_CHECK(cudaMallocManaged(&ok, 3 * sizeof(bool)));
@@ -415,7 +407,9 @@ TEST_CASE("All to all", "[all_to_all]") {
     
     CudaMPI::SharedState::Context sharedStateContext = {numRanks, 10, 10, 10, 10};
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext = {400};
+    CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
+    threadPrivateStateContext.pendingBufferSize = 400;
+    threadPrivateStateContext.peakClockKHz = 100;
 
     bool* ok;
     CUDA_CHECK(cudaMallocManaged(&ok, numRanks * sizeof(bool)));
