@@ -128,7 +128,21 @@ private:
     Rewriter mRewriter;
 };
 
+#define STR2(x) #x
+#define STR(x) STR2(x)
+const char* extra_arg = "-extra-arg=-I" STR(LLVM_BUILTIN_HEADERS);
+#undef STR
+#undef STR2
+
 int main(int argc, const char **argv) {
+    int adj_argc = argc + 1;
+    std::vector<const char*> adj_argv(adj_argc);
+    adj_argv[0] = argv[0];
+    adj_argv[1] = extra_arg;
+    for (int i = 1; i < argc; i++) {
+        adj_argv[i + 1] = argv[i];
+    }
+    
     CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
