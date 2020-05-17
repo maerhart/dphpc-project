@@ -2,21 +2,14 @@
 
 #include "mpi.h.cuh"
 
-#define TO_STR(x) TO_STR_2(x)
-#define TO_STR_2(x) #x
-#define MPI_CHECK(expr) \
-    if ((expr) != MPI_SUCCESS) { \
-        printf("MPI ERROR: " __FILE__ ":" TO_STR(__LINE__) ": " #expr "\n"); \
-        asm("trap;"); \
-    }
-
 namespace cg = cooperative_groups;
 
 struct SingleIntKernel {
     static __device__ void run(bool& ok)
     {
+        MPI_Init(nullptr, nullptr);
         int rank = -1;
-        MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+        MPI_CHECK_DEVICE(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
 
         if (rank == 0) {
             int x = 3456;
@@ -35,6 +28,7 @@ struct SingleIntKernel {
 
             ok = x == 3456;
         }
+        MPI_Finalize();
     }
 };
 

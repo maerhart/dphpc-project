@@ -3,6 +3,8 @@
 
 #include "cuda_mpi.cuh"
 
+#include "libc_processor.cuh"
+
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
@@ -46,16 +48,33 @@ public:
             ok[i] = false;
         }
 
-        CudaMPI::SharedState* sharedStatePtr = sharedStateHolder.get();
+        CudaMPI::SharedState* sharedState = sharedStateHolder.get();
 
         void* params[] = {
-            (void*)&sharedStatePtr,
+            (void*)&sharedState,
             (void*)&threadPrivateStateContext,
             (void*)&ok
         };
 
         CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mNumThreads, 1, params));
         CUDA_CHECK(cudaPeekAtLastError());
+        
+        std::set<int> unfinishedThreads;
+        for (int i = 0; i < sharedStateContext.numThreads; i++) {
+            unfinishedThreads.insert(i);
+        }
+
+        while (!unfinishedThreads.empty()) {
+            sharedState->deviceToHostCommunicator.processIncomingMessages([&](void* ptr, size_t size, int threadRank) {
+                if (ptr == 0 && size == 0) {
+                    int erased = unfinishedThreads.erase(threadRank);
+                    assert(erased);
+                } else {
+                    process_gpu_libc(ptr, size);
+                }
+            });
+        }
+        
         CUDA_CHECK(cudaDeviceSynchronize());
 
         for (int i = 0; i < mNumThreads; i++) {

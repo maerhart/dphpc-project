@@ -1,23 +1,23 @@
 #ifndef MPI_H
 #define MPI_H
 
-#define MPI_SUCCESS 0
 
 #define MPI_MAX_PROCESSOR_NAME 256
 
 #define MPI_ANY_TAG -1
 
-typedef int MPI_Comm;
+#include "mpi_common.cuh"
+#include "group.cuh"
+#include "communicator.cuh"
+
 typedef int MPI_Datatype;
 typedef int MPI_Op;
 typedef struct MPI_Status_t {} MPI_Status;
-typedef struct MPI_Group_t {} MPI_Group;
 typedef struct MPI_Request_t {} MPI_Request;
 
 __device__ int MPI_Init(int *argc, char ***argv);
 __device__ int MPI_Finalize(void);
-__device__ int MPI_Comm_size(MPI_Comm comm, int *size);
-__device__ int MPI_Comm_rank(MPI_Comm comm, int *rank);
+
 __device__ int MPI_Get_processor_name(char *name, int *resultlen);
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                      int root, MPI_Comm comm);
@@ -36,12 +36,6 @@ __device__ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sen
 __device__ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest,
             int tag, MPI_Comm comm);
 __device__ double MPI_Wtick();
-__device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group);
-__device__ int MPI_Group_incl(MPI_Group group, int n, const int ranks[],
-            MPI_Group *newgroup);
-__device__ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm);
-__device__ int MPI_Group_free(MPI_Group *group);
-__device__ int MPI_Group_rank(MPI_Group group, int *rank);
 __device__ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
                          MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
 __device__ int MPI_Abort(MPI_Comm comm, int errorcode);
@@ -49,8 +43,7 @@ __device__ int MPI_Type_size(MPI_Datatype datatype, int *size);
 __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
             void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
             MPI_Comm comm);
-__device__ int MPI_Attr_get(MPI_Comm comm, int keyval,void *attribute_val,
-            int *flag );
+
 __device__ int MPI_Barrier(MPI_Comm comm);
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
             MPI_Datatype sendtype, void *recvbuf, int recvcount,
@@ -87,13 +80,8 @@ __device__ int MPI_NULL_DELETE_FN(MPI_Comm comm, int keyval,
 
 __device__ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
                                  MPI_Delete_function *delete_fn, int *keyval, void *extra_state);
-__device__ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attribute_val);
 __device__ int MPI_Dims_create(int nnodes, int ndims, int dims[]);
-__device__ int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[],
-                               const int periods[], int reorder, MPI_Comm *comm_cart);
-__device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *comm_new);
-__device__ int MPI_Comm_split(MPI_Comm comm, int color, int key,
-                              MPI_Comm *newcomm);
+
 __device__ int MPI_Irecv(void *buf, int count, MPI_Datatype datatype,
                int source, int tag, MPI_Comm comm, MPI_Request *request);
 __device__ int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest,
@@ -102,18 +90,12 @@ __device__ int MPI_Testall(int count, MPI_Request array_of_requests[],
             int *flag, MPI_Status array_of_statuses[]);
 __device__ int MPI_Waitall(int count, MPI_Request array_of_requests[],
             MPI_Status *array_of_statuses);
-__device__ int MPI_Group_range_incl(MPI_Group group, int n, int ranges[][3],
-                                    MPI_Group *newgroup);
-__device__ int MPI_Comm_free(MPI_Comm *comm);
 __device__ int MPI_Initialized(int *flag);
 
 __device__ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
             int *outcount, int array_of_indices[],
             MPI_Status array_of_statuses[]);
 __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
-
-__device__ extern MPI_Comm MPI_COMM_WORLD;
-__device__ extern MPI_Comm MPI_COMM_NULL;
 
 #define MPI_INT 0
 #define MPI_DOUBLE 1
@@ -129,7 +111,5 @@ __device__ extern MPI_Comm MPI_COMM_NULL;
 
 #define MPI_STATUSES_IGNORE ((MPI_Status*)1)
 #define MPI_STATUS_IGNORE ((MPI_Status*)1)
-
-#define MPI_UNDEFINED 15
 
 #endif // MPI_H

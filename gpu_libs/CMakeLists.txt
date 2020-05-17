@@ -20,7 +20,6 @@ add_subdirectory(cuda_btl)
 add_subdirectory(gpu_libc)
 add_subdirectory(gpu_mpi)
 add_subdirectory(gpu_main)
-add_subdirectory(gpumpi_common)
 
 add_library(gpu_libs INTERFACE)
 target_link_libraries(gpu_libs INTERFACE gpu_libc gpu_mpi gpu_main)
@@ -30,6 +29,5 @@ export(TARGETS
     gpu_libc
     gpu_mpi
     gpu_main
-    gpumpi_common
     cuda_btl
     APPEND FILE gpu_libs-exports.cmake)

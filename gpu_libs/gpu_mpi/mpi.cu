@@ -8,17 +8,13 @@
 #include "string.h.cuh"
 
 #include <cooperative_groups.h>
-
-
 using namespace cooperative_groups;
 
-
-__device__ MPI_Comm MPI_COMM_WORLD = 0;
-__device__ MPI_Comm MPI_COMM_NULL = 1;
-
+#include "mpi_common.cuh"
 
 __device__ int MPI_Init(int *argc, char ***argv) {
-    // nothing to do
+    initializeGlobalGroups();
+    initializeGlobalCommunicators();
     return MPI_SUCCESS;
 }
 
@@ -29,28 +25,6 @@ __device__ int MPI_Finalize(void) {
     // notify host that there will be no messages from this thread anymore
     CudaMPI::sharedState().deviceToHostCommunicator.delegateToHost(0, 0);
 
-    return MPI_SUCCESS;
-}
-
-__device__ int MPI_Comm_size(MPI_Comm comm, int *size) {
-    assert(size);
-    if (comm == MPI_COMM_WORLD) {
-        auto multi_grid = this_multi_grid();
-        *size = multi_grid.size();
-    } else {
-        NOT_IMPLEMENTED
-    }
-    return MPI_SUCCESS;
-}
-
-__device__ int MPI_Comm_rank(MPI_Comm comm, int *rank) {
-    assert(rank);
-    if (comm == MPI_COMM_WORLD) {
-        auto multi_grid = this_multi_grid();
-        *rank = multi_grid.thread_rank();
-    } else {
-        NOT_IMPLEMENTED
-    }
     return MPI_SUCCESS;
 }
 
@@ -92,7 +66,8 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
         assert(ops);
         for (int dst = 0; dst < commSize; dst++) {
             if (dst != commRank) {
-                ops[dst] = CudaMPI::isend(dst, buffer, dataSize, comm, tag);
+                static_assert(sizeof(comm) == sizeof(uintptr_t));
+                ops[dst] = CudaMPI::isend(dst, buffer, dataSize, (uintptr_t)comm, tag);
             }
         }
         for (int dst = 0; dst < commSize; dst++) {
@@ -102,7 +77,8 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
         }
         free(ops);
     } else {
-        CudaMPI::PendingOperation* op = CudaMPI::irecv(root, buffer, dataSize, comm, tag);
+        static_assert(sizeof(comm) == sizeof(uintptr_t));
+        CudaMPI::PendingOperation* op = CudaMPI::irecv(root, buffer, dataSize, (uintptr_t)comm, tag);
         CudaMPI::wait(op);
     }
     
@@ -134,7 +110,8 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
         assert(ops);
         for (int src = 0; src < commSize; src++) {
             if (src != commRank) {
-                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, comm, tag);
+                static_assert(sizeof(comm) == sizeof(uintptr_t));
+                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, (uintptr_t)comm, tag);
             }
         }
         for (int i = 0; i < count; i++) {
@@ -161,7 +138,8 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
         free(buffers);
         free(ops);
     } else {
-        CudaMPI::PendingOperation* op = CudaMPI::isend(root, sendbuf, dataSize, comm, tag);
+        static_assert(sizeof(comm) == sizeof(uintptr_t));
+        CudaMPI::PendingOperation* op = CudaMPI::isend(root, sendbuf, dataSize, (uintptr_t)comm, tag);
         CudaMPI::wait(op);
     }
     
@@ -198,22 +176,7 @@ __device__ double MPI_Wtick() {
     int peakClockKHz = CudaMPI::threadPrivateState().peakClockKHz;
     return 0.001 / peakClockKHz;
 }
-__device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Group_incl(MPI_Group group, int n, const int ranks[],
-            MPI_Group *newgroup) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Group_free(MPI_Group *group) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Group_rank(MPI_Group group, int *rank) {
-    return MPI_SUCCESS;
-}
+
 __device__ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
                          MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
     return MPI_SUCCESS;
@@ -229,10 +192,7 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
             MPI_Comm comm) {
     return MPI_SUCCESS;
 }
-__device__ int MPI_Attr_get(MPI_Comm comm, int keyval,void *attribute_val,
-            int *flag ) {
-    return MPI_SUCCESS;
-}
+
 __device__ int MPI_Barrier(MPI_Comm comm) {
     return MPI_SUCCESS;
 }
@@ -283,23 +243,11 @@ __device__ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
                                  MPI_Delete_function *delete_fn, int *keyval, void *extra_state) {
     return MPI_SUCCESS;
 }
-__device__ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attribute_val) {
-    return MPI_SUCCESS;
-}
+
 __device__ int MPI_Dims_create(int nnodes, int ndims, int dims[]) {
     return MPI_SUCCESS;
 }
-__device__ int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[],
-                               const int periods[], int reorder, MPI_Comm *comm_cart) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *comm_new) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Comm_split(MPI_Comm comm, int color, int key,
-                              MPI_Comm *newcomm) {
-    return MPI_SUCCESS;
-}
+
 __device__ int MPI_Irecv(void *buf, int count, MPI_Datatype datatype,
                int source, int tag, MPI_Comm comm, MPI_Request *request) {
     return MPI_SUCCESS;
@@ -316,13 +264,7 @@ __device__ int MPI_Waitall(int count, MPI_Request array_of_requests[],
             MPI_Status *array_of_statuses) {
     return MPI_SUCCESS;
 }
-__device__ int MPI_Group_range_incl(MPI_Group group, int n, int ranges[][3],
-                                    MPI_Group *newgroup) {
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Comm_free(MPI_Comm *comm) {
-    return MPI_SUCCESS;
-}
+
 __device__ int MPI_Initialized(int *flag) {
     return MPI_SUCCESS;
 }
