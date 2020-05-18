@@ -63,7 +63,7 @@ __device__ ThreadPrivateState::Holder::~Holder() {
     }
 }
 
-__device__ PendingOperation* isend(int dst, const void* data, int count, uintptr_t comm, int tag) {
+__device__ PendingOperation* isend(int dst, const void* data, int count, int ctx, int tag) {
     LOG("isend");
     PendingOperation* po = threadPrivateState().allocatePendingOperation();
     while (!po) {
@@ -78,7 +78,7 @@ __device__ PendingOperation* isend(int dst, const void* data, int count, uintptr
     po->otherThread = dst;
     po->data = (void*) data;
     po->count = count;
-    po->comm = comm;
+    po->ctx = ctx;
     po->tag = tag;
     po->canBeFreed = false;
 //     po->unused = false;
@@ -88,7 +88,7 @@ __device__ PendingOperation* isend(int dst, const void* data, int count, uintptr
     return po;
 }
 
-__device__ PendingOperation* irecv(int src, void* data, int count, uintptr_t comm, int tag) {
+__device__ PendingOperation* irecv(int src, void* data, int count, int ctx, int tag) {
     LOG("irecv");
 
     PendingOperation* po = threadPrivateState().allocatePendingOperation();
@@ -104,7 +104,7 @@ __device__ PendingOperation* irecv(int src, void* data, int count, uintptr_t com
     po->otherThread = src;
     po->data = data;
     po->count = count;
-    po->comm = comm;
+    po->ctx = ctx;
     po->tag = tag;
     po->canBeFreed = false;
 //     po->unused = false;
@@ -256,7 +256,7 @@ __device__ void progressStartedSend(PendingOperation& send, ProgressState& state
     LOG("Trying to find matching send in the list of expected receives of other process");
     for (volatile MessageDescriptor* md = rq.head(); md != nullptr; md = rq.next(md)) {
         if (md->src != ANY_SRC && md->src != src) continue;
-        if (md->comm != send.comm) continue;
+        if (md->ctx != send.ctx) continue;
         if (md->tag != ANY_TAG && md->tag != send.tag) continue;
         // if we are here then "md" matches "send"
         matchedRecv = md;
@@ -279,7 +279,7 @@ __device__ void progressStartedSend(PendingOperation& send, ProgressState& state
             LOG("List of unexpected receives is full, retry later");
         } else {
             MessageDescriptor md;
-            md.comm = send.comm;
+            md.ctx = send.ctx;
             md.src = src;
             md.tag = send.tag;
             md.privatePointer = &send;
@@ -416,7 +416,7 @@ __device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state
     LOG("Trying to find message in the list of unexpected messages");
     for (volatile MessageDescriptor* md = uq.head(); md != nullptr; md = uq.next(md)) {
         if (md->src != recv.otherThread) continue;
-        if (md->comm != recv.comm) continue;
+        if (md->ctx != recv.ctx) continue;
         if (md->tag != recv.tag) continue;
         // if we are here then "md" matches "recv"
         LOG("Message is found in unexpected list");
@@ -439,7 +439,7 @@ __device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state
             LOG("List of expected receives is full, retry later");
         } else {
             MessageDescriptor md;
-            md.comm = recv.comm;
+            md.ctx = recv.ctx;
             md.src = recv.otherThread;
             md.tag = recv.tag;
             md.privatePointer = &recv;

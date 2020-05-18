@@ -251,7 +251,7 @@ struct PendingOperation {
     PendingOperation* foreignPendingOperation = nullptr;
     void* data = nullptr;
     int count = 0;
-    uintptr_t comm = 0;
+    int ctx = 0;
     int tag = 0;
     bool canBeFreed = false;
     //bool unused = true;
@@ -348,13 +348,13 @@ public:
 struct MessageDescriptor {
     PendingOperation* privatePointer;
     int src;
-    uintptr_t comm;
+    int ctx;
     int tag;
 
     __host__ __device__ volatile MessageDescriptor& operator=(const MessageDescriptor& other) volatile {
         privatePointer = other.privatePointer;
         src = other.src;
-        comm = other.comm;
+        ctx = other.ctx;
         tag = other.tag;
         return *this;
     }
@@ -516,9 +516,9 @@ __device__ void setSharedState(SharedState* sharedState);
 
 __device__ ThreadPrivateState& threadPrivateState();
 
-__device__ PendingOperation* isend(int dst, const void* data, int count, uintptr_t comm, int tag);
+__device__ PendingOperation* isend(int dst, const void* data, int count, int ctx, int tag);
 
-__device__ PendingOperation* irecv(int src, void* data, int count, uintptr_t comm, int tag);
+__device__ PendingOperation* irecv(int src, void* data, int count, int ctx, int tag);
 
 __device__ void receiveFragmentPointers();
 

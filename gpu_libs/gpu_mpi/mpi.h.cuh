@@ -4,7 +4,9 @@
 
 #define MPI_MAX_PROCESSOR_NAME 256
 
-#define MPI_ANY_TAG -1
+#define MPI_ANY_TAG (-1)
+
+#define MPI_TAG_UB ((1 << 15) - 1)
 
 #include "mpi_common.cuh"
 #include "group.cuh"

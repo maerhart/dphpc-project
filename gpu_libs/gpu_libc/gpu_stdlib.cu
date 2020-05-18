@@ -2,43 +2,43 @@
 
 #include "assert.h.cuh"
 
-__device__ void qsort(void *base, size_t nmemb, size_t size,
+__device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
 {
     NOT_IMPLEMENTED
 }
 
-__device__ void *realloc(void *ptr, size_t size) {
+__device__ void *__gpu_realloc(void *ptr, size_t size) {
     NOT_IMPLEMENTED
     return ptr;
 }
 
 
-__device__ void srand(unsigned int seed) {
+__device__ void __gpu_srand(unsigned int seed) {
     NOT_IMPLEMENTED
 }
 
-__device__ int rand(void) {
+__device__ int __gpu_rand(void) {
     NOT_IMPLEMENTED
     return 10;
 }
 
 __device__ char stub[] = "stub";
 
-__device__ char *getenv(const char *name) {
+__device__ char *__gpu_getenv(const char *name) {
     NOT_IMPLEMENTED
     return stub;
 }
 
-__device__ void exit(int) {
+__device__ void __gpu_exit(int) {
     asm("exit;");
 }
 
-__device__ void abort() {
+__device__ void __gpu_abort() {
     asm("trap;");
 }
 
-__device__ int posix_memalign(void **memptr, size_t alignment, size_t size) {
+__device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size) {
     NOT_IMPLEMENTED
     return 0;
 }

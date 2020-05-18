@@ -10,7 +10,13 @@ using MPI_Comm = MPI_Comm_impl*;
 __device__ extern MPI_Comm MPI_COMM_WORLD;
 __device__ extern MPI_Comm MPI_COMM_NULL;
 
+namespace gpu_mpi {
+
 __device__ void initializeGlobalCommunicators();
+
+__device__ int getCommContext(MPI_Comm comm);
+
+};
 
 __device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group);
 

@@ -8,7 +8,11 @@ __device__ extern MPI_Group MPI_GROUP_WORLD;
 __device__ extern MPI_Group MPI_GROUP_NULL;
 __device__ extern MPI_Group MPI_GROUP_EMPTY;
 
+namespace gpu_mpi {
+
 __device__ void initializeGlobalGroups();
+
+} // namespace
 
 __device__ int MPI_Group_incl(
     MPI_Group group, int n, const int ranks[], MPI_Group *newgroup);

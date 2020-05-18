@@ -12,9 +12,11 @@ using namespace cooperative_groups;
 
 #include "mpi_common.cuh"
 
+#define MPI_COLLECTIVE_TAG (-2)
+
 __device__ int MPI_Init(int *argc, char ***argv) {
-    initializeGlobalGroups();
-    initializeGlobalCommunicators();
+    gpu_mpi::initializeGlobalGroups();
+    gpu_mpi::initializeGlobalCommunicators();
     return MPI_SUCCESS;
 }
 
@@ -35,13 +37,6 @@ __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
     return MPI_SUCCESS;
 }
 
-// #define CAT1(X,Y) X##Y
-// #define CAT(X,Y) CAT1(X,Y)
-// #define $ \
-//     int CAT(rank, __LINE__);\
-//     MPI_Comm_rank(MPI_COMM_WORLD, &CAT(rank, __LINE__));\
-//     printf("ALIVE %s:%d rank %d\n", __FILE__, __LINE__, CAT(rank, __LINE__));
-
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
@@ -59,15 +54,15 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
     MPI_Comm_size(comm, &commSize);
     MPI_Comm_rank(comm, &commRank);
     
-    int tag = 123; // TODO use reserved tag
+    int tag = MPI_COLLECTIVE_TAG;
+    int ctx = gpu_mpi::getCommContext(comm);
     
     if (commRank == root) {
         CudaMPI::PendingOperation** ops = (CudaMPI::PendingOperation**) malloc(sizeof(CudaMPI::PendingOperation*) * commSize);
         assert(ops);
         for (int dst = 0; dst < commSize; dst++) {
             if (dst != commRank) {
-                static_assert(sizeof(comm) == sizeof(uintptr_t));
-                ops[dst] = CudaMPI::isend(dst, buffer, dataSize, (uintptr_t)comm, tag);
+                ops[dst] = CudaMPI::isend(dst, buffer, dataSize, ctx, tag);
             }
         }
         for (int dst = 0; dst < commSize; dst++) {
@@ -77,8 +72,7 @@ __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
         }
         free(ops);
     } else {
-        static_assert(sizeof(comm) == sizeof(uintptr_t));
-        CudaMPI::PendingOperation* op = CudaMPI::irecv(root, buffer, dataSize, (uintptr_t)comm, tag);
+        CudaMPI::PendingOperation* op = CudaMPI::irecv(root, buffer, dataSize, ctx, tag);
         CudaMPI::wait(op);
     }
     
@@ -102,7 +96,8 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
     assert(datatype == MPI_DOUBLE); // TODO
     int dataSize = sizeof(double) * count;
     
-    int tag = 124; // TODO use reserved tag
+    int tag = MPI_COLLECTIVE_TAG;
+    int ctx = gpu_mpi::getCommContext(comm);
     
     if (commRank == root) {
         auto ops = (CudaMPI::PendingOperation**) malloc(sizeof(CudaMPI::PendingOperation*) * commSize);
@@ -110,8 +105,7 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
         assert(ops);
         for (int src = 0; src < commSize; src++) {
             if (src != commRank) {
-                static_assert(sizeof(comm) == sizeof(uintptr_t));
-                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, (uintptr_t)comm, tag);
+                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, ctx, tag);
             }
         }
         for (int i = 0; i < count; i++) {
@@ -138,8 +132,7 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
         free(buffers);
         free(ops);
     } else {
-        static_assert(sizeof(comm) == sizeof(uintptr_t));
-        CudaMPI::PendingOperation* op = CudaMPI::isend(root, sendbuf, dataSize, (uintptr_t)comm, tag);
+        CudaMPI::PendingOperation* op = CudaMPI::isend(root, sendbuf, dataSize, ctx, tag);
         CudaMPI::wait(op);
     }
     

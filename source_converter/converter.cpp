@@ -143,7 +143,7 @@ int main(int argc, const char **argv) {
         adj_argv[i + 1] = argv[i];
     }
     
-    CommonOptionsParser OptionsParser(argc, argv, MyToolCategory);
+    CommonOptionsParser OptionsParser(adj_argc, adj_argv.data(), MyToolCategory);
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
     return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());

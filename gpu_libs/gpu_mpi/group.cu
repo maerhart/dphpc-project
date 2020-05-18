@@ -15,6 +15,8 @@ __device__ MPI_Group MPI_GROUP_WORLD = nullptr;
 __device__ MPI_Group MPI_GROUP_EMPTY = nullptr;
 __device__ MPI_Group MPI_GROUP_NULL = nullptr;
 
+namespace gpu_mpi {
+
 __device__ void initializeGlobalGroups() {
     if (this_grid().thread_rank() == 0) {
         MPI_GROUP_EMPTY = new MPI_Group_impl;
@@ -28,6 +30,8 @@ __device__ void initializeGlobalGroups() {
     }
     this_grid().sync();
 }
+
+} // namespace
 
 __device__ int MPI_Group_incl(
     MPI_Group group, int n, const int ranks[], MPI_Group *newgroup)

@@ -26,25 +26,24 @@ __global__ void testRunnerKernel(
 class TestRunner {
 public:
     TestRunner(int numThreads)
-        : mNumThreads(numThreads)
-        {}
+    {
+        mSharedStateContext.numThreads = numThreads;
+        
+        int device = 0;
+        int peakClockKHz;
+        CUDA_CHECK(cudaDeviceGetAttribute(&peakClockKHz, cudaDevAttrClockRate, device));
+        mThreadPrivateStateContext.peakClockKHz = peakClockKHz;
+    }
 
     template <typename KernelClass>
     void run() {
-        CudaMPI::SharedState::Context sharedStateContext;
-        sharedStateContext.numThreads = mNumThreads;
-        CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
-
-        int device = 0;
-
-        CudaMPI::ThreadPrivateState::Context threadPrivateStateContext;
-        int peakClockKHz;
-        CUDA_CHECK(cudaDeviceGetAttribute(&peakClockKHz, cudaDevAttrClockRate, device));
-        threadPrivateStateContext.peakClockKHz = peakClockKHz;
+        
+        mSharedStateContext.numThreads = mSharedStateContext.numThreads;
+        CudaMPI::SharedState::Holder sharedStateHolder(mSharedStateContext);
 
         bool* ok;
-        CUDA_CHECK(cudaMallocManaged(&ok, sizeof(bool) * mNumThreads));
-        for (int i = 0; i < mNumThreads; i++) {
+        CUDA_CHECK(cudaMallocManaged(&ok, sizeof(bool) * mSharedStateContext.numThreads));
+        for (int i = 0; i < mSharedStateContext.numThreads; i++) {
             ok[i] = false;
         }
 
@@ -52,15 +51,15 @@ public:
 
         void* params[] = {
             (void*)&sharedState,
-            (void*)&threadPrivateStateContext,
+            (void*)&mThreadPrivateStateContext,
             (void*)&ok
         };
 
-        CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mNumThreads, 1, params));
+        CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
         CUDA_CHECK(cudaPeekAtLastError());
         
         std::set<int> unfinishedThreads;
-        for (int i = 0; i < sharedStateContext.numThreads; i++) {
+        for (int i = 0; i < mSharedStateContext.numThreads; i++) {
             unfinishedThreads.insert(i);
         }
 
@@ -77,12 +76,13 @@ public:
         
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        for (int i = 0; i < mNumThreads; i++) {
+        for (int i = 0; i < mSharedStateContext.numThreads; i++) {
             REQUIRE(ok[i] == true);
         }
     }
-private:
-    int mNumThreads;
+    
+    CudaMPI::SharedState::Context mSharedStateContext;
+    CudaMPI::ThreadPrivateState::Context mThreadPrivateStateContext;
 };
 
 #endif
