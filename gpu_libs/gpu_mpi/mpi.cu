@@ -12,7 +12,30 @@ using namespace cooperative_groups;
 
 #include "mpi_common.cuh"
 
+#include "device_vector.cuh"
+
 #define MPI_COLLECTIVE_TAG (-2)
+
+// internal opaque object
+struct MPI_Request_impl {
+    __device__ MPI_Request_impl(CudaMPI::PendingOperation* pendingOperation) 
+        : ref_count(1) 
+        , pendingOperation(pendingOperation)
+    {}
+    
+    CudaMPI::PendingOperation* pendingOperation;
+    
+    int ref_count;
+};
+
+namespace gpu_mpi {
+    
+__device__ void incRequestRefCount(MPI_Request request) {
+    assert(request->ref_count > 0);
+    request->ref_count++;
+}
+    
+} // namespace
 
 __device__ int MPI_Init(int *argc, char ***argv) {
     gpu_mpi::initializeGlobalGroups();
@@ -147,6 +170,9 @@ __device__ int MPI_Type_commit(MPI_Datatype *datatype) {
 
 __device__ int MPI_Recv(void *buf, int count, MPI_Datatype datatype,
                         int source, int tag, MPI_Comm comm, MPI_Status *status) {
+    MPI_Request request;
+    MPI_Irecv(buf, count, datatype, source, tag, comm, &request);
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
     return MPI_SUCCESS;
 }
 
@@ -160,6 +186,9 @@ __device__ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sen
 __device__ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest,
             int tag, MPI_Comm comm)
 {
+    MPI_Request request;
+    MPI_Isend(buf, count, datatype, dest, tag, comm, &request);
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
     return MPI_SUCCESS;
 }
 
@@ -203,7 +232,11 @@ __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype sendtype, void *recvbuf, int recvcount,
              MPI_Datatype recvtype, MPI_Comm comm)
 {
+    int commSize = -1;
+    MPI_Comm_size(comm, &commSize);
+    
     NOT_IMPLEMENTED
+    
     return MPI_SUCCESS;
 }
 
@@ -247,17 +280,40 @@ __device__ int MPI_Dims_create(int nnodes, int ndims, int dims[]) {
 }
 
 __device__ int MPI_Irecv(void *buf, int count, MPI_Datatype datatype,
-               int source, int tag, MPI_Comm comm, MPI_Request *request) {
+               int source, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    int ctx = gpu_mpi::getCommContext(comm);
+    
+    int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
+    assert(dataSize > 0);
+    
+    CudaMPI::PendingOperation* op = CudaMPI::irecv(source, buf, dataSize, ctx, tag);
+    
+    if (request) {
+        *request = new MPI_Request_impl(op);
+    }
+    
     return MPI_SUCCESS;
 }
 __device__ int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest,
-                         int tag, MPI_Comm comm, MPI_Request *request) {
+                         int tag, MPI_Comm comm, MPI_Request *request) 
+{
+    int ctx = gpu_mpi::getCommContext(comm);
+    
+    int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
+    assert(dataSize > 0);
+    
+    CudaMPI::PendingOperation* op = CudaMPI::isend(dest, buf, dataSize, ctx, tag);
+    
+    *request = new MPI_Request_impl(op);
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Testall(int count, MPI_Request array_of_requests[],
             int *flag, MPI_Status array_of_statuses[]) {
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Waitall(int count, MPI_Request array_of_requests[],
             MPI_Status *array_of_statuses) {
     return MPI_SUCCESS;
@@ -273,11 +329,25 @@ __device__ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
     return MPI_SUCCESS;
 }
 __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status) {
+    if (request == MPI_REQUEST_NULL) {
+        if (status) *status = MPI_Status();
+    }
+    
+    CudaMPI::wait((*request)->pendingOperation);
+    MPI_Request_free(request);
+    if (status) *status = MPI_Status();
     return MPI_SUCCESS;
 }
 
 
 
+__device__ int MPI_Request_free(MPI_Request *request) {
+    assert((*request)->ref_count > 0);
+    (*request)->ref_count--;
+    if ((*request)->ref_count == 0) delete *request;
+    *request = MPI_REQUEST_NULL;
+    return MPI_SUCCESS;
+}
 
 
 

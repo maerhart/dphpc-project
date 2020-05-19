@@ -73,7 +73,7 @@ __device__ int MPI_Group_range_incl(
         int last = ranges[i][1];
         int stride = ranges[i][2];
         if (first > last) {
-            if (stride > 0) return MPI_ERROR;
+            if (stride > 0) return MPI_FAILURE;
             // invert range
             stride = -stride;
             int remainder = (last - first) % stride;

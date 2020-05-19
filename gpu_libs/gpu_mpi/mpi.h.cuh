@@ -5,8 +5,10 @@
 #define MPI_MAX_PROCESSOR_NAME 256
 
 #define MPI_ANY_TAG (-1)
+#define MPI_ANY_SOURCE (-1)
 
 #define MPI_TAG_UB ((1 << 15) - 1)
+
 
 #include "mpi_common.cuh"
 #include "group.cuh"
@@ -14,8 +16,25 @@
 #include "datatypes.cuh"
 
 typedef int MPI_Op;
-typedef struct MPI_Status_t {} MPI_Status;
-typedef struct MPI_Request_t {} MPI_Request;
+
+
+struct MPI_Status {
+    int MPI_SOURCE = MPI_ANY_SOURCE;
+    int MPI_TAG = MPI_ANY_TAG;
+    int MPI_ERROR = MPI_SUCCESS;
+};
+
+// internal opaque object
+struct MPI_Request_impl;
+using MPI_Request = MPI_Request_impl*;
+
+#define MPI_REQUEST_NULL nullptr
+
+namespace gpu_mpi {
+    
+__device__ void incRequestRefCount(MPI_Request request);
+    
+} // namespace
 
 __device__ int MPI_Init(int *argc, char ***argv);
 __device__ int MPI_Finalize(void);
@@ -99,12 +118,14 @@ __device__ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
             MPI_Status array_of_statuses[]);
 __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
 
+__device__ int MPI_Request_free(MPI_Request *request);
+
 #define MPI_SUM 1
 #define MPI_MIN 2
 #define MPI_MAX 3
 #define MPI_MAXLOC 4
 
-#define MPI_STATUSES_IGNORE ((MPI_Status*)1)
-#define MPI_STATUS_IGNORE ((MPI_Status*)1)
+#define MPI_STATUSES_IGNORE ((MPI_Status*)nullptr)
+#define MPI_STATUS_IGNORE ((MPI_Status*)nullptr)
 
 #endif // MPI_H
