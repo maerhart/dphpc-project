@@ -26,6 +26,25 @@ public:
         }
     }
     
+    __device__ DeviceVector(const DeviceVector& other)
+        : mSize(0)
+        , mReserved(other.size())
+        , mData((T*) malloc(mReserved * sizeof(T)))
+    {
+        for (int i = 0; i < other.size(); i++) {
+            mData[i] = other[i];
+        }
+    }
+    
+    // Yes, I know that this is inefficient.
+    // Have time to fix? Do it.
+    __device__ void operator=(DeviceVector other) {
+        resize(other.size());
+        for (int i = 0; i < other.size(); i++) {
+            mData[i] = other[i];
+        }
+    }
+    
     __device__ ~DeviceVector() {
         for (int i = 0; i < mSize; i++) {
             mData[i].~T();
@@ -79,8 +98,7 @@ public:
     __device__ int size() const volatile { return mSize; }
     
 private:
-    __device__ void operator=(const DeviceVector&) = delete;
-    __device__ DeviceVector(const DeviceVector&) = delete;
+    
     
     int mSize;
     int mReserved;

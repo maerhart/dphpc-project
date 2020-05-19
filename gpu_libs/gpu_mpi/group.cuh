@@ -12,6 +12,10 @@ namespace gpu_mpi {
 
 __device__ void initializeGlobalGroups();
 
+__device__ void destroyGlobalGroups();
+
+__device__ void incGroupRefCount(MPI_Group group);
+
 } // namespace
 
 __device__ int MPI_Group_incl(

@@ -14,6 +14,8 @@ namespace gpu_mpi {
 
 __device__ void initializeGlobalCommunicators();
 
+__device__ void destroyGlobalCommunicators();
+
 __device__ int getCommContext(MPI_Comm comm);
 
 };

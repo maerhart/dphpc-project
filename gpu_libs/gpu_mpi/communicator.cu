@@ -14,11 +14,23 @@ using namespace cooperative_groups;
 
 #include "stdlib.cuh"
 
+#include <memory>
+
 struct MPI_Comm_impl {
+    __device__ MPI_Comm_impl(int context, MPI_Group group) 
+        : context(context), group(group), ref_count(1)
+    {
+        gpu_mpi::incGroupRefCount(group);
+    }
+    
+    __device__ ~MPI_Comm_impl() {
+        MPI_Group_free(&group);
+    }
+    
     int context;
     MPI_Group group;
+    int ref_count;
 };
-
 
 __device__ MPI_Comm MPI_COMM_WORLD = (MPI_Comm)nullptr;
 __device__ MPI_Comm MPI_COMM_NULL = (MPI_Comm)nullptr;
@@ -42,28 +54,50 @@ __device__ int getCommContext(MPI_Comm comm) {
 
 __device__ void initializeGlobalCommunicators() {
     if (this_grid().thread_rank() == 0) {
-        MPI_COMM_NULL = new MPI_Comm_impl;
-        MPI_COMM_NULL->context = 0;
-        MPI_COMM_NULL->group = MPI_GROUP_EMPTY;
+        MPI_COMM_NULL = new MPI_Comm_impl(0, MPI_GROUP_EMPTY);
         
-        MPI_COMM_WORLD = new MPI_Comm_impl;
-        MPI_COMM_WORLD->context = 1;
-        MPI_COMM_WORLD->group = MPI_GROUP_WORLD;
+        MPI_COMM_WORLD = new MPI_Comm_impl(1, MPI_GROUP_WORLD);
         
         CudaMPI::threadPrivateState().unusedCommunicationContext = 2;
     }
     this_grid().sync();
 }
 
+__device__ void destroyGlobalCommunicators() {
+    this_grid().sync();
+    if (this_grid().thread_rank() == 0) {
+        delete MPI_COMM_NULL;
+        delete MPI_COMM_WORLD;
+    }
+}
+
+__device__ void incCommRefCount(MPI_Comm comm) {
+    assert(comm->ref_count > 0);
+    
+    if (comm == MPI_COMM_WORLD || comm == MPI_COMM_NULL) return;
+    
+    comm->ref_count += 1;
+}
+
 } // namespace
 
 __device__ int MPI_Comm_free(MPI_Comm *comm) {
-    delete *comm;
+    assert((*comm)->ref_count > 0);
+    
+    if (*comm == MPI_COMM_WORLD || *comm == MPI_COMM_NULL) {
+        *comm = MPI_COMM_NULL;
+        return MPI_SUCCESS;
+    }
+    
+    (*comm)->ref_count--;
+    if ((*comm)->ref_count == 0) delete *comm;
+    *comm = MPI_COMM_NULL;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group) {
     *group = comm->group;
+    gpu_mpi::incGroupRefCount(*group);
     return MPI_SUCCESS;
 }
 
@@ -78,10 +112,7 @@ __device__ int MPI_Comm_create(
         *newcomm = MPI_COMM_NULL;
         return MPI_SUCCESS;
     } else {
-        MPI_Comm commImpl = new MPI_Comm_impl;
-        commImpl->context = ctxId;
-        commImpl->group = group;
-        *newcomm = commImpl;
+        *newcomm = new MPI_Comm_impl(ctxId, group);
         return MPI_SUCCESS;
     }
 }
@@ -95,15 +126,7 @@ __device__ int MPI_Attr_get(MPI_Comm comm, int keyval,void *attribute_val, int *
 }
 
 __device__ int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[], const int periods[], int reorder, MPI_Comm *comm_cart) {
-    MPI_Comm commImpl = new MPI_Comm_impl;
-    
-    int ctxId = gpu_mpi::createNewContextId(comm_old);
-    
-    commImpl->context = ctxId;
-    commImpl->group = comm_old->group;
-    
-    *comm_cart = commImpl;
-    
+    NOT_IMPLEMENTED
     return MPI_SUCCESS;
 }
 
@@ -113,7 +136,7 @@ __device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *co
 }
 
 __device__ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm) {
-    NOT_IMPLEMENTED
+    
     return MPI_SUCCESS;
 }
 

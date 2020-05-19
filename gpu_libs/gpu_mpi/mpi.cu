@@ -27,6 +27,9 @@ __device__ int MPI_Finalize(void) {
     // notify host that there will be no messages from this thread anymore
     CudaMPI::sharedState().deviceToHostCommunicator.delegateToHost(0, 0);
 
+    gpu_mpi::destroyGlobalGroups();
+    gpu_mpi::destroyGlobalCommunicators();
+    
     return MPI_SUCCESS;
 }
 
@@ -200,16 +203,23 @@ __device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm) {
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype sendtype, void *recvbuf, int recvcount,
-             MPI_Datatype recvtype, MPI_Comm comm) {
+             MPI_Datatype recvtype, MPI_Comm comm)
+{
+    NOT_IMPLEMENTED
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Allgatherv(const void *sendbuf, int sendcount,
                               MPI_Datatype sendtype, void *recvbuf, const int recvcounts[],
-                              const int displs[], MPI_Datatype recvtype, MPI_Comm comm) {
+                              const int displs[], MPI_Datatype recvtype, MPI_Comm comm)
+{
+    NOT_IMPLEMENTED
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, const int recvcounts[], const int displs[], MPI_Datatype recvtype,
                            int root, MPI_Comm comm) {

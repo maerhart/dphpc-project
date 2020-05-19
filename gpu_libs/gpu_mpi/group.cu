@@ -8,6 +8,7 @@ using namespace cooperative_groups;
 
 struct MPI_Group_impl {
     CudaMPI::DeviceVector<int> ranks;
+    int ref_count;
 };
 
 
@@ -29,6 +30,23 @@ __device__ void initializeGlobalGroups() {
         }
     }
     this_grid().sync();
+}
+
+__device__ void destroyGlobalGroups() {
+    this_grid().sync();
+    if (this_grid().thread_rank() == 0) {
+        delete MPI_GROUP_EMPTY;
+        delete MPI_GROUP_WORLD;
+    }
+    
+}
+
+__device__ void incGroupRefCount(MPI_Group group) {
+    if (group == MPI_GROUP_NULL || group == MPI_GROUP_WORLD || group == MPI_GROUP_EMPTY) return;
+    
+    assert(group->ref_count > 0);
+    
+    group->ref_count += 1;
 }
 
 } // namespace
@@ -73,7 +91,15 @@ __device__ int MPI_Group_range_incl(
 }
 
 __device__ int MPI_Group_free(MPI_Group *group) {
-    delete *group;
+    if ((*group) == MPI_GROUP_NULL || (*group) == MPI_GROUP_WORLD || (*group) == MPI_GROUP_EMPTY) {
+        (*group) = MPI_GROUP_NULL;
+        return MPI_SUCCESS;
+    }
+    
+    assert((*group)->ref_count > 0);
+    (*group)->ref_count--;
+    if ((*group)->ref_count == 0) delete *group;
+    *group = MPI_GROUP_NULL;
     return MPI_SUCCESS;
 }
 
