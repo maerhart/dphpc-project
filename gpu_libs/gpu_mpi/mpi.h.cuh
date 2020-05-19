@@ -11,8 +11,8 @@
 #include "mpi_common.cuh"
 #include "group.cuh"
 #include "communicator.cuh"
+#include "datatypes.cuh"
 
-typedef int MPI_Datatype;
 typedef int MPI_Op;
 typedef struct MPI_Status_t {} MPI_Status;
 typedef struct MPI_Request_t {} MPI_Request;
@@ -98,13 +98,6 @@ __device__ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
             int *outcount, int array_of_indices[],
             MPI_Status array_of_statuses[]);
 __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
-
-#define MPI_INT 0
-#define MPI_DOUBLE 1
-#define MPI_CHAR 2
-#define MPI_BYTE 3
-#define MPI_DOUBLE_INT 4
-#define MPI_LONG_LONG 5
 
 #define MPI_SUM 1
 #define MPI_MIN 2

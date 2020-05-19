@@ -43,14 +43,9 @@ __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
-    int dataSize = -1;
-    switch (datatype) {
-        case MPI_INT:
-            dataSize = count * sizeof(int);
-            break;
-        default:
-            assert(0);
-    }
+    int dataSize = gpu_mpi::plainTypeSize(datatype);
+    assert(dataSize > 0);
+    
     int commSize = -1;
     int commRank = -1;
     
@@ -96,8 +91,8 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
     MPI_Comm_size(comm, &commSize);
     MPI_Comm_rank(comm, &commRank);
 
-    assert(datatype == MPI_DOUBLE); // TODO
-    int dataSize = sizeof(double) * count;
+    int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
+    assert(dataSize > 0);
     
     int tag = MPI_COLLECTIVE_TAG;
     int ctx = gpu_mpi::getCommContext(comm);
