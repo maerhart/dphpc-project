@@ -25,6 +25,8 @@ __device__ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group);
 __device__ int MPI_Comm_create(
     MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm);
 
+__device__ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm);
+
 __device__ int MPI_Comm_size(MPI_Comm comm, int *size);
 
 __device__ int MPI_Comm_rank(MPI_Comm comm, int *rank);
@@ -45,5 +47,7 @@ __device__ int MPI_Attr_get(MPI_Comm comm, int keyval,void *attribute_val,
 __device__ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attribute_val);
 
 __device__ int MPI_Comm_free(MPI_Comm *comm);
+
+
 
 #endif

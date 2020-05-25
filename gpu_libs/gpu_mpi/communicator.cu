@@ -58,9 +58,10 @@ __device__ void initializeGlobalCommunicators() {
         
         MPI_COMM_WORLD = new MPI_Comm_impl(1, MPI_GROUP_WORLD);
         
-        CudaMPI::threadPrivateState().unusedCommunicationContext = 2;
     }
     this_grid().sync();
+
+    CudaMPI::threadPrivateState().unusedCommunicationContext = 2;
 }
 
 __device__ void destroyGlobalCommunicators() {
@@ -112,6 +113,18 @@ __device__ int MPI_Comm_create(
         *newcomm = MPI_COMM_NULL;
         return MPI_SUCCESS;
     } else {
+        *newcomm = new MPI_Comm_impl(ctxId, group);
+        return MPI_SUCCESS;
+    }
+}
+
+__device__ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm) {
+    if (comm == MPI_COMM_NULL) {
+       return MPI_FAILURE; 
+    } else {
+        int ctxId = gpu_mpi::createNewContextId(comm);
+        MPI_Group group = comm->group;
+        gpu_mpi::incGroupRefCount(comm->group);
         *newcomm = new MPI_Comm_impl(ctxId, group);
         return MPI_SUCCESS;
     }
