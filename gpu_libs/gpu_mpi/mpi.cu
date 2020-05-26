@@ -1,3 +1,4 @@
+#include "datatypes.cuh"
 #include "mpi.h.cuh"
 
 // cuda_mpi.cuh should be included before device specific standard library functions
@@ -218,8 +219,34 @@ __device__ int MPI_Type_size(MPI_Datatype datatype, int *size) {
     return MPI_SUCCESS;
 }
 __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
-            MPI_Comm comm) {
+                          void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
+                          MPI_Comm comm)
+{
+    int comm_size = -1;
+    int comm_rank = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
+    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
+    assert(sendElemSize > 0);
+    assert(recvElemSize > 0);
+
+    assert(sendElemSize * sendcount == recvElemSize * recvcount);
+    int dataSize = sendElemSize * sendcount;
+
+    if (comm_rank != root) {
+        MPI_Send(sendbuf, sendcount, sendtype, root, MPI_COLLECTIVE_TAG, comm);
+    } else {
+        for (int r = 0; r < comm_size; r++) {
+            if (r == root) {
+                memcpy(((char*)recvbuf) + r * dataSize, sendbuf, dataSize);
+            } else {
+                MPI_Recv(((char*)recvbuf) + r * dataSize, recvcount, recvtype, r, MPI_COLLECTIVE_TAG, comm, MPI_STATUS_IGNORE);
+            }
+        }
+    }
+    
     return MPI_SUCCESS;
 }
 
@@ -242,11 +269,8 @@ __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype sendtype, void *recvbuf, int recvcount,
              MPI_Datatype recvtype, MPI_Comm comm)
 {
-    int commSize = -1;
-    MPI_Comm_size(comm, &commSize);
-    
-    NOT_IMPLEMENTED
-    
+    MPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, 0, comm);
+    MPI_Bcast(recvbuf, recvcount, recvtype, 0, comm);
     return MPI_SUCCESS;
 }
 

@@ -65,8 +65,8 @@ __device__ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
 __device__ int MPI_Abort(MPI_Comm comm, int errorcode);
 __device__ int MPI_Type_size(MPI_Datatype datatype, int *size);
 __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
-            MPI_Comm comm);
+                          void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
+                          MPI_Comm comm);
 
 __device__ int MPI_Barrier(MPI_Comm comm);
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
