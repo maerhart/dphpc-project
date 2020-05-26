@@ -149,7 +149,6 @@ __device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *co
 }
 
 __device__ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm) {
-    
     return MPI_SUCCESS;
 }
 

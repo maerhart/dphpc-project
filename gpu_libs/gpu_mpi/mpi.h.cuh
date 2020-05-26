@@ -14,9 +14,7 @@
 #include "group.cuh"
 #include "communicator.cuh"
 #include "datatypes.cuh"
-
-typedef int MPI_Op;
-
+#include "operators.cuh"
 
 struct MPI_Status {
     int MPI_SOURCE = MPI_ANY_SOURCE;
@@ -30,6 +28,8 @@ using MPI_Request = MPI_Request_impl*;
 
 #define MPI_REQUEST_NULL nullptr
 
+
+
 namespace gpu_mpi {
     
 __device__ void incRequestRefCount(MPI_Request request);
@@ -38,6 +38,9 @@ __device__ void incRequestRefCount(MPI_Request request);
 
 __device__ int MPI_Init(int *argc, char ***argv);
 __device__ int MPI_Finalize(void);
+
+__device__ int MPI_Op_create(MPI_User_function* user_fn, int commute, MPI_Op* op);
+__device__ int MPI_Op_free(MPI_Op *op);
 
 __device__ int MPI_Get_processor_name(char *name, int *resultlen);
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
@@ -120,10 +123,7 @@ __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
 
 __device__ int MPI_Request_free(MPI_Request *request);
 
-#define MPI_SUM 1
-#define MPI_MIN 2
-#define MPI_MAX 3
-#define MPI_MAXLOC 4
+
 
 #define MPI_STATUSES_IGNORE ((MPI_Status*)nullptr)
 #define MPI_STATUS_IGNORE ((MPI_Status*)nullptr)

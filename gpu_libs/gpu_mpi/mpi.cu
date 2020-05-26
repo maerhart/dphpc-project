@@ -14,6 +14,8 @@ using namespace cooperative_groups;
 
 #include "device_vector.cuh"
 
+#include "operators.cuh"
+
 #define MPI_COLLECTIVE_TAG (-2)
 
 // internal opaque object
@@ -28,18 +30,23 @@ struct MPI_Request_impl {
     int ref_count;
 };
 
+
+
 namespace gpu_mpi {
     
 __device__ void incRequestRefCount(MPI_Request request) {
     assert(request->ref_count > 0);
     request->ref_count++;
 }
-    
+
+#undef MPI_TYPES_LIST
+
 } // namespace
 
 __device__ int MPI_Init(int *argc, char ***argv) {
     gpu_mpi::initializeGlobalGroups();
     gpu_mpi::initializeGlobalCommunicators();
+    gpu_mpi::initializeOps();
     return MPI_SUCCESS;
 }
 
@@ -52,6 +59,8 @@ __device__ int MPI_Finalize(void) {
 
     gpu_mpi::destroyGlobalGroups();
     gpu_mpi::destroyGlobalCommunicators();
+    
+    gpu_mpi::destroyOps();
     
     return MPI_SUCCESS;
 }
@@ -66,7 +75,7 @@ __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
-    int dataSize = gpu_mpi::plainTypeSize(datatype);
+    int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
     assert(dataSize > 0);
     
     int commSize = -1;
@@ -114,7 +123,8 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
     MPI_Comm_size(comm, &commSize);
     MPI_Comm_rank(comm, &commRank);
 
-    int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
+    int elemSize = gpu_mpi::plainTypeSize(datatype);
+    int dataSize = elemSize * count;
     assert(dataSize > 0);
     
     int tag = MPI_COLLECTIVE_TAG;
@@ -122,31 +132,28 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
     
     if (commRank == root) {
         auto ops = (CudaMPI::PendingOperation**) malloc(sizeof(CudaMPI::PendingOperation*) * commSize);
-        double* buffers = (double*) malloc(dataSize * commSize);
+        void* buffers = malloc(dataSize * commSize);
         assert(ops);
         for (int src = 0; src < commSize; src++) {
             if (src != commRank) {
-                ops[src] = CudaMPI::irecv(src, buffers + src * count, dataSize, ctx, tag);
+                ops[src] = CudaMPI::irecv(src, ((char*)buffers) + src * dataSize, dataSize, ctx, tag);
             }
-        }
-        for (int i = 0; i < count; i++) {
-            assert(op == MPI_SUM);
-            double* recvBufDouble = (double*) recvbuf;
-            recvBufDouble[i] = 0;
         }
         for (int src = 0; src < commSize; src++) {
-            double* tempBufDouble = nullptr;
+            const void* tempbuf = nullptr;
             if (src != commRank) {
                 CudaMPI::wait(ops[src]);
-                tempBufDouble = buffers + src * count;
+                tempbuf = ((char*)buffers) + src * dataSize;
             } else {
-                tempBufDouble = (double*) sendbuf;
+                tempbuf = sendbuf;
             }
-            double* recvBufDouble = (double*) recvbuf;
             
-            for (int i = 0; i < count; i++) {
-                assert(op == MPI_SUM);
-                recvBufDouble[i] += tempBufDouble[i];
+            if (src == 0) {
+                for (int i = 0; i < dataSize; i++) {
+                    ((char*)recvbuf)[i] = ((char*)tempbuf)[i];
+                }
+            } else {
+                gpu_mpi::invokeOperator(op, tempbuf, recvbuf, &count, &datatype);
             }
         }
         
@@ -198,8 +205,11 @@ __device__ double MPI_Wtick() {
 }
 
 __device__ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
-                         MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
-    return MPI_SUCCESS;
+                         MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    int err = MPI_Reduce(sendbuf, recvbuf, count, datatype, op, 0, comm);
+    if (err != MPI_SUCCESS) return err;
+    return MPI_Bcast(recvbuf, count, datatype, 0, comm);
 }
 __device__ int MPI_Abort(MPI_Comm comm, int errorcode) {
     return MPI_SUCCESS;

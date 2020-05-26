@@ -14,6 +14,7 @@ __device__ int plainTypeSize(MPI_Datatype type) {
     }
 }
 
+
 #undef MPI_TYPES_SIZE_F
 #undef MPI_TYPES_SIZE_SEP
 

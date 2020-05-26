@@ -33,3 +33,17 @@ cd build-gpu_mpi
 cmake ../gpu_mpi -DLLVM_DIR=../llvm-install/lib/cmake/llvm -DClang_DIR=../llvm-install/lib/cmake/clang
 cmake --build .
 ```
+
+Run tests
+
+Run `ctest` from build directory or invoke `cmake` to run all tests
+
+```
+cmake --build . --target test
+```
+
+To debug individual tests with cuda-gdb, invoke following command from the build dir
+
+```
+cuda-gdb --args tests/sample_test
+```

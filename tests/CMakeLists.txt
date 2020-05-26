@@ -30,3 +30,8 @@ add_executable(communicator_test communicator_test.cu)
 target_link_libraries(communicator_test PUBLIC cuda_btl gpu_mpi common libc_processor)
 #target_compile_options(communicator_test PRIVATE -g -G)
 add_test(communicator_test communicator_test)
+
+
+add_executable(collectives_test collectives_test.cu)
+target_link_libraries(collectives_test cuda_btl gpu_mpi libc_processor)
+add_test(collectives_test collectives_test)
