@@ -270,7 +270,9 @@ __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype recvtype, MPI_Comm comm)
 {
     MPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, 0, comm);
-    MPI_Bcast(recvbuf, recvcount, recvtype, 0, comm);
+    int comm_size = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Bcast(recvbuf, recvcount * comm_size, recvtype, 0, comm);
     return MPI_SUCCESS;
 }
 

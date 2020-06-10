@@ -5,7 +5,18 @@
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
 {
-    NOT_IMPLEMENTED
+    char* ptr = (char*)base;
+    for (int i = 0; i < nmemb; i++) {
+        for (int j = i + 1; j < nmemb; j++) {
+            if (compar(ptr + i * size, ptr + j * size) > 0) {
+                for (int s = 0; s < size; s++) {
+                    char tmp = ptr[i * size + s];
+                    ptr[i * size + s] = ptr[j * size + s];
+                    ptr[j * size + s] = tmp;
+                }
+            }
+        }
+    }
 }
 
 __device__ void *__gpu_realloc(void *ptr, size_t size) {

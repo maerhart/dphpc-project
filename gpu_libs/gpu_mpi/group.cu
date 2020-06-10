@@ -7,6 +7,7 @@
 using namespace cooperative_groups;
 
 struct MPI_Group_impl {
+    __device__ MPI_Group_impl() : ref_count(1) {}
     CudaMPI::DeviceVector<int> ranks;
     int ref_count;
 };

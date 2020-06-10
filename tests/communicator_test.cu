@@ -88,3 +88,65 @@ TEST_CASE("CommunicatorSendRecvTest", "[comm send recv test]") {
     TestRunner testRunner(2);
     testRunner.run<CommunicatorSendRecvTest>();
 }
+
+
+struct CommSplitTest {
+    static __device__ void run(bool& ok) {
+        ok = true;
+        
+        MPI_CHECK_DEVICE(MPI_Init(nullptr, nullptr));
+        
+        int rank = 0;
+        
+        MPI_CHECK_DEVICE(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+
+        MPI_Comm comm;
+
+        int color = -1;
+        int key = -1;
+        if (rank < 3) {
+            color = 0;
+            key = rank;
+        } else if (rank < 6) {
+            color = 1;
+            key = 6 - rank;
+        } else if (rank < 9) {
+            color = 2;
+            key = 1;
+        } else {
+            color = 2;
+            key = 0;
+        }
+
+        MPI_Comm_split(MPI_COMM_WORLD, color, key, &comm);
+
+        int new_rank = -1;
+        int new_size = -1;
+        MPI_Comm_rank(comm, &new_rank);
+        MPI_Comm_size(comm, &new_size);
+
+        if (rank < 3) {
+            ok = ok && (rank == new_rank);
+            ok = ok && (3 == new_size);
+        } else if (rank < 6) {
+            ok = ok && (5 - rank == new_rank);
+            ok = ok && (3 == new_size);
+        } else if (rank < 9) {
+            ok = ok && (rank - 5 == new_rank);
+            ok = ok && (4 == new_size);
+        } else {
+            ok = ok && (0 == new_rank);
+            ok = ok && (4 == new_size);
+        }
+
+        MPI_Comm_free(&comm);
+
+        MPI_CHECK_DEVICE(MPI_Finalize());
+        
+    }
+};
+
+TEST_CASE("CommSplitTest", "[comm split test]") {
+    TestRunner testRunner(10);
+    testRunner.run<CommSplitTest>();
+}

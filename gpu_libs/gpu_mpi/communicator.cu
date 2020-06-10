@@ -148,7 +148,70 @@ __device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *co
     return MPI_SUCCESS;
 }
 
+struct RankKey {
+    __device__ RankKey(int rank, int key) : rank(rank), key(key) {}
+    int rank;
+    int key;
+};
+
+__device__ int rank_key_compare(const void* a, const void* b) {
+    RankKey aa = *(const RankKey*)a;
+    RankKey bb = *(const RankKey*)b;
+
+    int res = aa.key - bb.key;
+    if (res != 0) return res; // qsort is not stable according to standard
+ 
+    return aa.rank - bb.rank;
+}
+
 __device__ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm) {
+    int comm_size = -1;
+    MPI_Comm_size(comm, &comm_size);
+
+    int comm_rank = -1;
+    MPI_Comm_rank(comm, &comm_rank);
+
+    CudaMPI::DeviceVector<int> colors(comm_size);
+    CudaMPI::DeviceVector<int> keys(comm_size);
+
+    MPI_Allgather(&color, 1, MPI_INT, &colors[0], 1, MPI_INT, comm);
+    MPI_Allgather(&key, 1, MPI_INT, &keys[0], 1, MPI_INT, comm);
+
+    CudaMPI::DeviceVector<RankKey> rankKeyList;
+    for (int rank = 0; rank < comm_size; rank++) {
+        if (colors[rank] != color) continue;
+
+        rankKeyList.push_back(RankKey(rank, keys[rank]));
+    }
+
+    int num_ranks = rankKeyList.size();
+
+    assert(num_ranks > 0);
+
+    __gpu_qsort(&rankKeyList[0], num_ranks, sizeof(RankKey), &rank_key_compare);
+
+    CudaMPI::DeviceVector<int> ranks(num_ranks);
+    for (int i = 0; i < num_ranks; i++) {
+        ranks[i] = rankKeyList[i].rank;
+    }
+
+    MPI_Group group;
+    MPI_Comm_group(comm, &group);
+
+    MPI_Group new_group;
+    MPI_Group_incl(group, rankKeyList.size(), &ranks[0], &new_group);
+
+    MPI_Group_free(&group);
+
+
+    int ctxId = gpu_mpi::createNewContextId(comm);
+    MPI_Comm new_comm = new MPI_Comm_impl(ctxId, new_group);
+    
+    int new_comm_size = -1;
+    MPI_Comm_size(new_comm, &new_comm_size);
+
+    *newcomm = new_comm;
+
     return MPI_SUCCESS;
 }
 

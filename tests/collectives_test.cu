@@ -124,7 +124,7 @@ struct AllGatherTest {
         }
 
         ok = true;
-        for (int i = 0; i < bufsize; i++) {
+        for (int i = 0; i < bufsize * comm_size; i++) {
             if (recv_buffer[i] != expected[i]) {
                 ok = false;
                 break;
