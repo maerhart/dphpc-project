@@ -3,12 +3,11 @@ VERSION=GPU
 CXX=mpicxx
 CXXFLAGS=-std=c++11 -I./include -O3 -g -fopenmp -Wall
 
-# For OpenMPI implementations. MPICH uses different --showme flags
-MPIFLAGS=$(shell mpicxx --showme:compile)
-MPILINK=$(shell mpicxx --showme:link)
-# NVCC has a bug with -pthreads
-MPI_COMPILE_FLAGS=$(subst -pthread,-Xcompiler="-pthread",$(MPIFLAGS))
-MPI_LINK_FLAGS=$(subst -pthread,-Xcompiler="-pthread",$(MPILINK))
+# Get mpi compiler wrapper arguments (without host compiler arg)
+MPIFLAGS=$(shell $(CXX) --show | cut -d' ' -f2-)
+# NVCC has a bug with -pthreads, pass to underlying compiler if used
+MPI_COMPILE_FLAGS=$(subst -pthread,-Xcompiler="-pthread",$(patsubst -l%,,$(MPIFLAGS)))
+MPI_LINK_FLAGS=$(subst -pthread,-Xcompiler="-pthread",$(patsubst -I%,,$(MPIFLAGS)))
 
 NVCC=nvcc
 ARCH=-gencode arch=compute_60,code=sm_60 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70
