@@ -19,7 +19,7 @@ for comp_unit in compile_commands:
     if not file.lower().endswith(extensions):
         continue
 
-    converter = "$SCRIPTDIR/../_deps/llvm-build/bin/converter"
+    converter = "$SCRIPTDIR/../source_converter/converter"
 
     converter = os.path.expandvars(converter)
     comp_db = os.path.abspath("compile_commands.json")
