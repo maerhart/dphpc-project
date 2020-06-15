@@ -18,3 +18,13 @@ add_subdirectory(common)
 
 enable_testing()
 add_subdirectory(tests)
+
+export(TARGETS 
+    gpu_libs
+    gpu_libc
+    gpu_mpi
+    gpu_main
+    cuda_btl
+    common
+    libc_processor
+    APPEND FILE gpu_libs-exports.cmake)

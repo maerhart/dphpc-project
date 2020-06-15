@@ -60,7 +60,7 @@ set(CMAKE_CUDA_FLAGS
     -gencode arch=compute_61,code=sm_61 \
     -gencode arch=compute_70,code=sm_70")
 
-include(${SCRIPTDIR}/../gpu_libs/gpu_libs-exports.cmake)
+include(${SCRIPTDIR}/../gpu_libs-exports.cmake)
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 EOF
