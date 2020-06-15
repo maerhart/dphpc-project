@@ -61,6 +61,7 @@ void particle_deallocate(struct particles *part) {
   delete[] part->v;
   delete[] part->w;
   delete[] part->q;
+  delete[] part->track_particle;
 }
 
 /** allocate particle arrays */
@@ -72,8 +73,6 @@ void particle_aux_allocate(struct particles *part,
   part_aux->nop = part->nop;
   // maximum number of particles
   part_aux->npmax = part->npmax;
-
-  long npmax = part->npmax;
 
   // allocate densities brought by each particle
   part_aux->rho_p = new FPpart[part->npmax][2][2][2];
