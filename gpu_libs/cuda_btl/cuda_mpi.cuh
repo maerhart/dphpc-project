@@ -482,6 +482,7 @@ private:
         , sharedFragmentBuffer(ctx.numFragments, ctx.fragmentSize)
         , deviceToHostCommunicator(ctx.deviceToHostQueueSize, ctx.numThreads)
         , freeManagedMemory(ctx.freeMemorySize)
+        , returnValue(0)
     {
     }
 
@@ -508,6 +509,8 @@ public:
     DeviceToHostCommunicator deviceToHostCommunicator;
 
     FreeManagedMemory freeManagedMemory;
+
+    int returnValue;
 };
 
 __device__ SharedState& sharedState();

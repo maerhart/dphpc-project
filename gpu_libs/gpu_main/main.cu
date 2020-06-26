@@ -85,8 +85,10 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
     CudaMPI::setSharedState(sharedState);
     CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
 
-    int unused = __gpu_main(argc, argv);
-    (void) unused;
+    int returnValue = __gpu_main(argc, argv);
+    if (returnValue != 0) {
+        sharedState->returnValue = 1;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -189,5 +191,7 @@ int main(int argc, char* argv[]) {
     MPI_CHECK(MPI_Finalize());
 
     std::cerr << "GPUMPI: MPI finished!" << std::endl;
+
+    return sharedState->returnValue;
 }
 
