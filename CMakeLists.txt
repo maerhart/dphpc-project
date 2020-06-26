@@ -18,6 +18,7 @@ add_subdirectory(common)
 
 enable_testing()
 add_subdirectory(tests)
+add_subdirectory(toolchain_tests)
 
 export(TARGETS 
     gpu_libs
