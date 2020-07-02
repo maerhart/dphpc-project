@@ -1,7 +1,7 @@
 VERSION=CPU
 
-CXX=mpicxx
-CXXFLAGS=-std=c++11 -I./include -O3 -g -fopenmp -Wall
+CXX=mpicc
+CXXFLAGS=-std=c11 -I./include -g -fopenmp
 
 NVCC=nvcc
 ARCH=-gencode arch=compute_60,code=sm_60 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70
@@ -15,14 +15,14 @@ SRCDIR=src
 
 # Check go GPU or CPU path
 ifeq ($(VERSION), GPU)
-    FILES=$(shell find $(SRCDIR) -name '*.cu' -o -name '*.cpp')
-    SRCS=$(subst $(SRCDIR)/sputniPIC_CPU.cpp,,${FILES})
+    FILES=$(shell find $(SRCDIR) -name '*.cu' -o -name '*.c')
+    SRCS=$(subst $(SRCDIR)/sputniPIC_CPU.c,,${FILES})
 
     COMPILER=$(NVCC)
     COMPILER_FLAGS=$(NVCCFLAGS)
 else
-    FILES=$(shell find $(SRCDIR) -path $(SRCDIR)/gpu -prune -o -name '*.cpp' -print)
-    SRCS=$(subst $(SRCDIR)/sputniPIC_GPU.cpp,,${FILES})
+    FILES=$(shell find $(SRCDIR) -path $(SRCDIR)/gpu -prune -o -name '*.c' -print)
+    SRCS=$(subst $(SRCDIR)/sputniPIC_GPU.c,,${FILES})
 
     COMPILER=$(CXX)
     COMPILER_FLAGS=$(CXXFLAGS)
@@ -31,7 +31,7 @@ endif
 # Generate list of objects
 OBJDIR=src
 OBJS=$(subst $(SRCDIR),$(OBJDIR), $(SRCS))
-OBJS:=$(subst .cpp,.o,$(OBJS))
+OBJS:=$(subst .c,.o,$(OBJS))
 OBJS:=$(subst .cu,.o,$(OBJS))
 
 BIN := ./bin
@@ -46,14 +46,14 @@ ${BIN}:
 
 # Binary linkage
 $(BIN)/$(TARGET): $(OBJS)
-	$(COMPILER) $(COMPILER_FLAGS) $+ -o $@
+	$(COMPILER) $(COMPILER_FLAGS) $+ -o $@ -lm -ldl
 
 # GPU objects
 $(SRCDIR)/%.o: $(SRCDIR)/%.cu
 	$(NVCC) $(NVCCFLAGS) $< -c -o $@
 
 # Host objects
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
+$(OBJDIR)/%.o: $(SRCDIR)/%.c
 	$(COMPILER) $(COMPILER_FLAGS) $< -c -o $@
 
 clean:

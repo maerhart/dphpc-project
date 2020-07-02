@@ -63,16 +63,16 @@ struct particles_aux {
   long nop;
 
   /** densities carried nop,2,2,2*/
-  FPpart (*rho_p)[2][2][2];
-  FPpart (*Jx)[2][2][2];
-  FPpart (*Jy)[2][2][2];
-  FPpart (*Jz)[2][2][2];
-  FPpart (*pxx)[2][2][2];
-  FPpart (*pxy)[2][2][2];
-  FPpart (*pxz)[2][2][2];
-  FPpart (*pyy)[2][2][2];
-  FPpart (*pyz)[2][2][2];
-  FPpart (*pzz)[2][2][2];
+  FPpart ****rho_p;
+  FPpart ****Jx;
+  FPpart ****Jy;
+  FPpart ****Jz;
+  FPpart ****pxx;
+  FPpart ****pxy;
+  FPpart ****pxz;
+  FPpart ****pyy;
+  FPpart ****pyz;
+  FPpart ****pzz;
 
   /** cell index: ix, iy, iz */
   int *ix_p;

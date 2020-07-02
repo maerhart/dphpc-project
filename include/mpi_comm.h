@@ -10,9 +10,9 @@
 #include "Particles.h"
 #include "Parameters.h"
 
-void mpi_reduce_densities(struct grid*, struct interpDensNet*);
-void mpi_reduce_densities(struct grid*, struct interpDensSpecies*);
-void mpi_broadcast_field(struct grid*, struct EMfield*);
-void mpi_scatter_particles(particles *part_global, particles *part_local);
+void mpi_reduce_dens_net(struct grid*, struct interpDensNet*);
+void mpi_reduce_dens_spec(struct grid*, struct interpDensSpecies*);
+void mpi_broadcast_field(struct grid *grd, struct EMfield *field);
+void mpi_scatter_particles(struct particles *part_global, struct particles *part_local);
 
 #endif

@@ -2,9 +2,11 @@
 #define PARAMETERS_H
 
 // standard libraries
-#include <string>
+#include <stdbool.h>
 
 #define NS_MAX 6
+#define MAX_STRING_LEN 50
+#define PARAMETERS_NS_MAX NS_MAX
 
 /** Simulation Parameters */
 struct parameters {
@@ -200,12 +202,17 @@ take on the boundary of the domain 2 =  Periodic Condition
   int DiagnosticsOutputCycle;
 
   /** inputfile */
-  std::string inputfile;
+  char inputfile[MAX_STRING_LEN];
   /** SaveDirName     */
-  std::string SaveDirName;
+  char SaveDirName[MAX_STRING_LEN];
   /** RestartDirName     */
-  std::string RestartDirName;
+  char RestartDirName[MAX_STRING_LEN];
   /** name of the file with wave amplitude and phases */
-  std::string WaveFile;
+  char WaveFile[MAX_STRING_LEN];
 };
+
+
+void hardcodedDefaultParameters(struct parameters *param);
+void printParameters(struct parameters *param);
+
 #endif

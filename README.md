@@ -2,20 +2,20 @@
 # sputniPIC
 ## Building
 ```bash
-$ git clone https://github.com/steven-chien/sputniPIC.git
+$ git clone 
 $ cd sputniPIC
-$ make VERSION=GPU
-```
-If you want to use the CPU version, specify version to CPU instead.
-```bash
 $ make VERSION=CPU
+```
+If you want to use the GPU version, specify version to GPU instead.
+```bash
+$ make VERSION=GPU
 ```
 ## Usage
 ```bash
 $ make clean
 $ make -j
-$ mkdir data_3D
-$ ./bin/sputniPIC.out ./inputfiles/GEM_3D.inp |& tee gpu_results.txt
+$ mkdir data
+$ ./bin/sputniPIC.out |& tee results.txt
 
 -------------------------
 sputniPIC Sim. Parameters

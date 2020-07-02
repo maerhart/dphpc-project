@@ -1,7 +1,7 @@
 #ifndef GRID_H
 #define GRID_H
 
-#include <iostream>
+#include <stdio.h>
 
 #include "Alloc.h"
 #include "Parameters.h"
@@ -92,48 +92,48 @@ void interpN2Cinterp(FPinterp ***vecFieldC, FPinterp ***vecFieldN,
 /** calculate gradient on nodes, given a scalar field defined on central points
  */
 void gradC2N(FPfield ***gradXN, FPfield ***gradYN, FPfield ***gradZN,
-             FPfield ***scFieldC, grid *grd);
+             FPfield ***scFieldC, struct grid *grd);
 
 /** calculate gradient on nodes, given a scalar field defined on central points
  */
 void gradN2C(FPfield ***gradXC, FPfield ***gradYC, FPfield ***gradZC,
-             FPfield ***scFieldN, grid *grd);
+             FPfield ***scFieldN, struct grid *grd);
 
 /** calculate divergence on central points, given a vector field defined on
  * nodes  */
 void divN2C(FPfield ***divC, FPfield ***vecFieldXN, FPfield ***vecFieldYN,
-            FPfield ***vecFieldZN, grid *grd);
+            FPfield ***vecFieldZN, struct grid *grd);
 
 /** calculate divergence on central points, given a Tensor field defined on
  * nodes  */
 void divSymmTensorN2C(FPinterp ***divCX, FPinterp ***divCY, FPinterp ***divCZ,
                       FPinterp ***pXX, FPinterp ***pXY, FPinterp ***pXZ,
                       FPinterp ***pYY, FPinterp ***pYZ, FPinterp ***pZZ,
-                      grid *grd);
+                      struct grid *grd);
 
 /** calculate divergence on nodes, given a vector field defined on central
  * points  */
 void divC2N(FPfield ***divN, FPfield ***vecFieldXC, FPfield ***vecFieldYC,
-            FPfield ***vecFieldZC, grid *grd);
+            FPfield ***vecFieldZC, struct grid *grd);
 
 /** calculate curl on nodes, given a vector field defined on central points  */
 void curlC2N(FPfield ***curlXN, FPfield ***curlYN, FPfield ***curlZN,
              FPfield ***vecFieldXC, FPfield ***vecFieldYC,
-             FPfield ***vecFieldZC, grid *grd);
+             FPfield ***vecFieldZC, struct grid *grd);
 
 /** calculate curl on central points, given a vector field defined on nodes  */
 void curlN2C(FPfield ***curlXC, FPfield ***curlYC, FPfield ***curlZC,
              FPfield ***vecFieldXN, FPfield ***vecFieldYN,
-             FPfield ***vecFieldZN, grid *grd);
+             FPfield ***vecFieldZN, struct grid *grd);
 
 /** calculate laplacian on nodes, given a scalar field defined on nodes */
-void lapN2N(FPfield ***lapN, FPfield ***scFieldN, grid *grd);
+void lapN2N(FPfield ***lapN, FPfield ***scFieldN, struct grid *grd);
 
 /** calculate laplacian on nodes, given a scalar field defined on nodes */
-void lapN2N_V(FPfield ***lapN, FPfield ***scFieldN, grid *grd);
+void lapN2N_V(FPfield ***lapN, FPfield ***scFieldN, struct grid *grd);
 
 /** calculate laplacian on central points, given a scalar field defined on
  * central points */
-void lapC2C(FPfield ***lapC, FPfield ***scFieldC, grid *grd);
+void lapC2C(FPfield ***lapC, FPfield ***scFieldC, struct grid *grd);
 
 #endif
