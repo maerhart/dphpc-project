@@ -1,7 +1,7 @@
 VERSION=CPU
 
 CXX=mpicc
-CXXFLAGS=-std=c11 -I./include -g -fopenmp
+CXXFLAGS=-std=c11 -I./include -O3 -g -fopenmp
 
 NVCC=nvcc
 ARCH=-gencode arch=compute_60,code=sm_60 -gencode arch=compute_61,code=sm_61 -gencode arch=compute_70,code=sm_70
