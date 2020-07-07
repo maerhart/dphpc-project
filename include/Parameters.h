@@ -66,6 +66,8 @@ struct parameters {
   long np[NS_MAX];
   /** maximum number of particles array for different species */
   long npMax[NS_MAX];
+  /** Total number of particles for species i in comm world */
+  long npTot[NS_MAX];
   /** max number of particles */
   double NpMaxNpRatio;
   /** charge to mass ratio array for different species */

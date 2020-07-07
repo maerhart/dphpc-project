@@ -69,15 +69,17 @@ int main(int argc, char **argv){
     // Init MPI 
 	int mpi_thread_support;
 	int mpi_rank, mpi_size;
-	MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &mpi_thread_support);
+	MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_thread_support);
 	MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-    printf("Total number of cores: %d\n", omp_get_max_threads());
+    if(!mpi_rank){
+        printf("Total number of MPI ranks: %d\n", mpi_size);
+        printf("Number of cores on root: %d\n", omp_get_max_threads());
+    }
     
 
     // ====================================================== //
     // Read the inputfile and fill the param structure
-    // Read the input file name from command line
 
     struct parameters param;
     // readInputFile(&param,argc,argv);
@@ -132,16 +134,20 @@ int main(int argc, char **argv){
     }
 
     // ====================================================== //
-    // Distribute system to slave processors.
+    // Distribute system to worker processors.
     // We do particle decomposition, shared domain. 
 
     // Set number of particles per species for local processes
 	for (int i = 0; i < param.ns; i++){
-		//number of particles localy is global number/num mpi processes
-		param.np[i] /= mpi_size;
-		// Maximum number of particles is also divided by num mpi processes,
+        param.npTot[i] = param.np[i];
+		//number of particles localy is global number/batch size
+		param.np[i] /= (param.number_of_batches*mpi_size);
+		// Maximum number of particles is also divided by batchsize,
 		// since we do particle decomposition
-		param.npMax[i] /= mpi_size;
+		param.npMax[i] /= (param.number_of_batches*mpi_size);
+
+        if(!mpi_rank)
+            printf("Local number of particles for species %d: %ld (%d batches per node)\n", i, param.np[i], param.number_of_batches);
 	}
 
     // allocation of local particles
@@ -149,17 +155,6 @@ int main(int argc, char **argv){
         particle_allocate(&param,&part[is],is);
 
     mpi_broadcast_field(&grd, &field);
-    for(int is=0; is<param.ns; is++){
-        mpi_scatter_particles(&part_global[is], &part[is]);
-    }
-
-    // Dealloc global particles array, it is no longer needed
-    if(!mpi_rank){
-        for (int is=0; is < param.ns; is++)
-            particle_deallocate(&part_global[is]);
-    }
-
-
 
     // ====================================================== //
     // Timing variables
@@ -177,9 +172,6 @@ int main(int argc, char **argv){
 
         // ====================================================== //
         // implicit mover
-        int offset = 30;
-        int len = 5;
-        double sum = 0;
 
         if(!mpi_rank){
             printf("\n***********************\n");
@@ -190,31 +182,30 @@ int main(int argc, char **argv){
 
         time0 = MPI_Wtime();
 
-        // #pragma omp parallel for // only if use mover_PC_V
+        // set to zero the densities - needed for interpolation
+        setZeroDensities(&idn,ids,&grd,param.ns);
+
+        // #pragma omp parallel for // Requires MPI_THREAD_MULTIPLE support. 
         for (int is=0; is < param.ns; is++){
-            mover_PC(&part[is],&field,&grd,&param);
-            //mover_PC_V(&part[is],&field,&grd,&param);
-            //mover_interp(&part[is], &field, &ids[is],&grd, &param);
+
+            int b = batch_update_particles(
+                &part_global[is], 
+                &part[is],
+                &field,
+                &ids[is],
+                &grd,
+                &param,
+                param.npTot[is]/(param.number_of_batches*mpi_size),
+                param.npTot[is]
+                );
+
+            if(!mpi_rank)
+            printf("Move and interpolate species %d in %d batches using MPI\n", is, b);
+
+            applyBCids(&ids[is],&grd,&param);
         }
 
         time0 = timer(&average[0], &variance[0], &cycle_time[0], time0, cycle);
-
-        // ====================================================== //
-        // interpolation particle to grid
-        if(!mpi_rank)
-            printf("*** INTERPOLATION P2G ***\n");
-
-        // set to zero the densities - needed for interpolation
-        setZeroDensities(&idn,ids,&grd,param.ns);
-        
-        // interpolate species: MAXIMUM parallelism is number of species
-        #pragma omp parallel for
-        for (int is=0; is < param.ns; is++){
-            interpP2G(&part[is],&ids[is],&grd);
-
-            // apply BC to interpolated densities
-            applyBCids(&ids[is],&grd,&param);
-        }
 
         // sum over species
         sumOverSpecies(&idn,ids,&grd,param.ns);
@@ -230,7 +221,7 @@ int main(int argc, char **argv){
         time0 = timer(&average[1], &variance[1], &cycle_time[1], time0, cycle);
 
         // ====================================================== //
-        // From here, master calculates new EM field. slaves idle
+        // From here, master calculates new EM field. workers idle
 
         if(!mpi_rank){
             // interpolate charge density from center to node
@@ -246,8 +237,6 @@ int main(int argc, char **argv){
             //  Poisson correction
             if (param.PoissonCorrection)
                 divergenceCleaning(&grd,&field_aux,&field,&idn,&param);
-            
-            // Equal to here.
 
             calculateE(&grd,&field_aux,&field,&id_aux,ids,&param);
             calculateB(&grd,&field_aux,&field,&param);
@@ -275,7 +264,9 @@ int main(int argc, char **argv){
             printf("Timing Cycle %d : %f, %f, %f, %f\n", cycle, cycle_time[0],cycle_time[1],cycle_time[2],cycle_time[3]);
     }  // end of one PIC cycle
     
+    // ====================================================== //
     /// Release the resources
+
     // deallocate field
     grid_deallocate(&grd);
     field_deallocate(&grd,&field);
@@ -287,6 +278,12 @@ int main(int argc, char **argv){
     for (int is=0; is < param.ns; is++){
         interp_dens_species_deallocate(&grd,&ids[is]);
         particle_deallocate(&part[is]);
+    }
+
+    // Dealloc global particles array
+    if(!mpi_rank){
+        for (int is=0; is < param.ns; is++)
+            particle_deallocate(&part_global[is]);
     }
     
     if(!mpi_rank){

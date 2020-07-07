@@ -17,17 +17,94 @@
 // }
 
 
-void _scatter(FPpart *send, FPpart *recv, long count, MPI_Datatype type){
 
-	MPI_Scatter(
-		send, count, type,
-		recv, count, type,
+void _sendrecv_particles(FPpart *send, FPpart *recv, int len, int send_rank, int recv_rank, int rank, MPI_Request *request, int tag){
+
+	MPI_Datatype type;
+	if(sizeof(FPinterp) == sizeof(float)){
+		type = MPI_FLOAT;
+	}
+	else{
+		type = MPI_DOUBLE;
+	}
+
+	if(rank == send_rank){
+		MPI_Send(send, len, type, recv_rank, tag, MPI_COMM_WORLD);
+	}
+	else if(rank == recv_rank){
+		MPI_Recv(recv, len, type, send_rank, tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	}
+
+}
+
+void send_particle_batch(
+	struct particles *part_send, 
+	struct particles *part_recv, 
+	size_t send_offset, 
+	size_t recv_offset, 
+	size_t len, 
+	int send_rank,
+	int recv_rank, 
+	int rank
+	){
+
+	MPI_Request *request;
+
+	_sendrecv_particles(part_send->x+send_offset, part_recv->x+recv_offset, len, send_rank, recv_offset, rank, request, 0);
+	_sendrecv_particles(part_send->y+send_offset, part_recv->y+recv_offset, len, send_rank, recv_offset, rank, request, 1);
+	_sendrecv_particles(part_send->z+send_offset, part_recv->z+recv_offset, len, send_rank, recv_offset, rank, request, 2);
+	_sendrecv_particles(part_send->u+send_offset, part_recv->u+recv_offset, len, send_rank, recv_offset, rank, request, 3);
+	_sendrecv_particles(part_send->v+send_offset, part_recv->v+recv_offset, len, send_rank, recv_offset, rank, request, 4);
+	_sendrecv_particles(part_send->w+send_offset, part_recv->w+recv_offset, len, send_rank, recv_offset, rank, request, 5);
+	
+	MPI_Datatype type;
+	if(sizeof(FPinterp) == sizeof(float)){
+		type = MPI_FLOAT;
+	}
+	else{
+		type = MPI_DOUBLE;
+	}
+
+	if(rank == send_rank){
+		MPI_Send(part_send->q+send_offset, len, type, recv_rank, 6, MPI_COMM_WORLD);
+	}
+	else if(rank == recv_rank){
+		MPI_Recv(part_recv->q+recv_offset, len, type, send_rank, 6, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	}
+
+
+}
+
+
+void _scatter(FPpart *send, FPpart *recv, int *displ, int *count, int rank, MPI_Datatype type){
+
+	MPI_Scatterv(
+		send, count, displ, type,
+		recv, count[rank], type,
 		0, MPI_COMM_WORLD
 		);
 
 }
 
-void mpi_scatter_particles(struct particles *part_global, struct particles *part_local){
+int mpi_scatter_particles(struct particles *part_global, struct particles *part_local, int offset, int batchsize, int num_particles){
+
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	int counts[size];
+	int displ[size];
+	int batch_sum = 0;
+
+	for(int i=0; i<size; i++){
+		if(offset + batchsize >= num_particles){
+			batchsize = num_particles - offset;
+		}
+		displ[i] = offset;
+		counts[i] = batchsize;
+		offset += batchsize;
+		batch_sum += batchsize;
+	}
 
 	MPI_Datatype type;
 	if(sizeof(FPpart) == sizeof(float)){
@@ -38,12 +115,12 @@ void mpi_scatter_particles(struct particles *part_global, struct particles *part
 	}
 	// MPI_Datatype type = _mpi_get_basetype<FPpart>();
 
-	_scatter(part_global->x, part_local->x, part_local->nop, type);
-	_scatter(part_global->y, part_local->y, part_local->nop, type);
-	_scatter(part_global->z, part_local->z, part_local->nop, type);
-	_scatter(part_global->u, part_local->u, part_local->nop, type);
-	_scatter(part_global->v, part_local->v, part_local->nop, type);
-	_scatter(part_global->w, part_local->w, part_local->nop, type);
+	_scatter(part_global->x, part_local->x, displ, counts, rank, type);
+	_scatter(part_global->y, part_local->y, displ, counts, rank, type);
+	_scatter(part_global->z, part_local->z, displ, counts, rank, type);
+	_scatter(part_global->u, part_local->u, displ, counts, rank, type);
+	_scatter(part_global->v, part_local->v, displ, counts, rank, type);
+	_scatter(part_global->w, part_local->w, displ, counts, rank, type);
 
 	if(sizeof(FPinterp) == sizeof(float)){
 		type = MPI_FLOAT;
@@ -51,17 +128,85 @@ void mpi_scatter_particles(struct particles *part_global, struct particles *part
 	else{
 		type = MPI_DOUBLE;
 	}
-	MPI_Scatter(
-		part_global->q, part_local->nop, type,
-		part_local->q, part_local->nop, type,
+	MPI_Scatterv(
+		part_global->q, counts, displ, type,
+		part_local->q, counts[rank], type,
 		0, MPI_COMM_WORLD
-	);
+		);
 
-	MPI_Scatter(
-		part_global->track_particle, part_local->nop, MPI_C_BOOL,
-		part_local->track_particle, part_local->nop, MPI_C_BOOL,
+	// MPI_Scatterv(
+	// 	part_global->track_particle, counts, displ, MPI_C_BOOL,
+	// 	part_local->track_particle, counts[rank], MPI_C_BOOL,
+	// 	0, MPI_COMM_WORLD
+	// 	);
+
+	part_local->nop = counts[rank];
+	return batch_sum;
+
+}
+
+void _gather(FPpart *send, FPpart *recv, int *displ, int *count, int rank, MPI_Datatype type){
+
+	MPI_Gatherv(
+		send, count[rank], type,
+		recv, count, displ, type,
 		0, MPI_COMM_WORLD
-	);
+		);
+
+}
+
+void mpi_gather_particles(struct particles *part_global, struct particles *part_local, int offset, int batchsize, int num_particles){
+
+	int rank, size;
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	int counts[size];
+	int displ[size];
+
+	for(int i=0; i<size; i++){
+		if(offset + batchsize >= num_particles){
+			batchsize = num_particles - offset;
+		}
+		displ[i] = offset;
+		counts[i] = batchsize;
+		offset += batchsize;
+	}
+
+
+	MPI_Datatype type;
+	if(sizeof(FPpart) == sizeof(float)){
+		type = MPI_FLOAT;
+	}
+	else{
+		type = MPI_DOUBLE;
+	}
+	// MPI_Datatype type = _mpi_get_basetype<FPpart>();
+
+	_gather(part_local->x, part_global->x, displ, counts, rank, type);
+	_gather(part_local->y, part_global->y, displ, counts, rank, type);
+	_gather(part_local->z, part_global->z, displ, counts, rank, type);
+	_gather(part_local->u, part_global->u, displ, counts, rank, type);
+	_gather(part_local->v, part_global->v, displ, counts, rank, type);
+	_gather(part_local->w, part_global->w, displ, counts, rank, type);
+
+	if(sizeof(FPinterp) == sizeof(float)){
+		type = MPI_FLOAT;
+	}
+	else{
+		type = MPI_DOUBLE;
+	}
+	MPI_Gatherv(
+		part_local->q, counts[rank], type,
+		part_global->q, counts, displ, type,
+		0, MPI_COMM_WORLD
+		);
+
+	// MPI_Scatterv(
+	// 	part_local->track_particle, counts, displ, MPI_C_BOOL,
+	// 	part_global->track_particle, counts[rank], MPI_C_BOOL,
+	// 	0, MPI_COMM_WORLD
+	// 	);
 
 }
 
