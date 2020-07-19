@@ -39,7 +39,7 @@ def find_headers(path_to_file, include_dirs):
                 for include_dir in all_include_dirs:
                     header_candidate = os.path.join(include_dir, header_name)
                     if os.path.exists(header_candidate):
-                        absolute_header = ps.path.realpath(header_candidate)
+                        absolute_header = os.path.realpath(header_candidate)
                         break
 
             # if nothing is find, then it is system header that should be skipped
@@ -185,18 +185,17 @@ if __name__ == '__main__':
         includes = get_includes(f, compile_commands)
         defines = get_definitions(f, compile_commands)
         escaped_name = escape_name(f)
-        target = f"target_lib_{escaped_name}"
         target_type = 'executable' if f in executables else 'library'
 
         cmakelists += textwrap.dedent(f"""
-            add_{target_type}({target} {f}.cu)
-            target_link_libraries({target} PRIVATE gpu_libs)
+            add_{target_type}(target_{escaped_name} {f}.cu)
+            target_link_libraries(target_{escaped_name} PRIVATE gpu_libs)
         """)
 
         if includes:
             includes_str = " ".join(includes)
             cmakelists += textwrap.dedent(f"""
-                target_include_directories({target} PRIVATE {includes_str})
+                target_include_directories(target_{escaped_name} PRIVATE {includes_str})
             """)
 
     for lib in libraries:
@@ -204,7 +203,7 @@ if __name__ == '__main__':
             escaped_lib_name = escape_name(lib)
             escaped_exe_name = escape_name(exe)
             cmakelists += textwrap.dedent(f"""
-                target_link_libraries(${escaped_exe_name} PRIVATE ${escaped_lib_name})
+                target_link_libraries(target_{escaped_exe_name} PRIVATE target_{escaped_lib_name})
             """)
 
     with open('CMakeLists.txt', 'w') as f:
