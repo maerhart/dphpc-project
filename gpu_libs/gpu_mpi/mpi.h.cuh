@@ -37,6 +37,7 @@ __device__ void incRequestRefCount(MPI_Request request);
 } // namespace
 
 __device__ int MPI_Init(int *argc, char ***argv);
+__device__ int MPI_Init_thread(int *argc, char ***argv, int required, int *provided);
 __device__ int MPI_Finalize(void);
 
 __device__ int MPI_Op_create(MPI_User_function* user_fn, int commute, MPI_Op* op);
@@ -123,6 +124,10 @@ __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status);
 
 __device__ int MPI_Request_free(MPI_Request *request);
 
+#define MPI_THREAD_SINGLE 1
+#define MPI_THREAD_FUNNELED 2
+#define MPI_THREAD_SERIALIZED 3
+#define MPI_THREAD_MULTIPLE 4
 
 
 #define MPI_STATUSES_IGNORE ((MPI_Status*)nullptr)

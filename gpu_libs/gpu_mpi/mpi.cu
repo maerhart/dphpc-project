@@ -51,6 +51,12 @@ __device__ int MPI_Init(int *argc, char ***argv) {
     return MPI_SUCCESS;
 }
 
+__device__ int MPI_Init_thread(int *argc, char ***argv, int required, int *provided) {
+    (void) required;
+    *provided = MPI_THREAD_SINGLE;
+    return MPI_Init(argc, argv);
+}
+
 __device__ int MPI_Finalize(void) {
     // TODO: due to exit() you need to perform
     // all MPI related memory deallocation here
