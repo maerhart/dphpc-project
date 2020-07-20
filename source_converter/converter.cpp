@@ -65,8 +65,14 @@ private:
 class MyASTConsumer : public ASTConsumer {
 public:
     MyASTConsumer(Rewriter &rewriter) : mFuncConverter(rewriter) {
-        mMatcher.addMatcher(functionDecl().bind("func"), &mFuncConverter);
+        // Match only explcit function declarations (that are written by user, but not
+        // added with compiler). This helps to avoid looking at builtin functions.
+        // Since implicit constructors in C++ also require __device__ annotation,
+        // we can't support them and stick to supporting only C subset.
+        mMatcher.addMatcher(functionDecl(unless(isImplicit())).bind("func"), &mFuncConverter);
+
         mMatcher.addMatcher(varDecl(hasGlobalStorage(), unless(isStaticLocal())).bind("globalVar"), &mFuncConverter);
+
         mMatcher.addMatcher(implicitCastExpr().bind("implicitCast"), &mFuncConverter);
     }
 
