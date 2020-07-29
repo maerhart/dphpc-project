@@ -182,14 +182,6 @@ __device__ char* strerror(int errnum) {
   return (char*)message;
 }
 
-__device__ void* memset(void * dst, int s, size_t count) {
-    char* a = (char*) dst;
-    count++;
-    while (--count)
-	*a++ = s;
-    return dst;
-}
-
 __device__ void* memcpy (void *dst, const void *src, size_t n) {
     void           *res = dst;
     unsigned char  *c1, *c2;

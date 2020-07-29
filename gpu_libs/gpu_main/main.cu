@@ -98,6 +98,11 @@ int main(int argc, char* argv[]) {
     int deviceCount = 0;
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
 
+    // increase stack size (defaut is 1024)
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 256));
+    // increase heap size (default is 8388608)
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, size_t{8388608} * size_t{64}));
+
     int blocksPerGrid = -1;
     int threadsPerBlock = -1;
 

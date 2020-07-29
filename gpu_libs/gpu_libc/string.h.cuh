@@ -58,9 +58,6 @@ __device__ char *strtok_r(char *str, const char *delim, char** ptrptr);
 #define strerror __gpu_strerror
 __device__ char* strerror(int errnum);
 
-#define memset __gpu_memset
-__device__ void* memset(void * dst, int s, size_t count);
-
 #define memcpy __gpu_memcpy
 __device__ void* memcpy (void *dst, const void *src, size_t n);
 
