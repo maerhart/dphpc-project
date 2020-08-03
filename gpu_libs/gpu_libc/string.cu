@@ -1,15 +1,15 @@
-#include "string.h.cuh"
-#include "ctypes.h.cuh"
-#include "assert.h.cuh"
+#include "string.cuh"
+#include "ctype.cuh"
+#include "assert.cuh"
 
-__device__ char *strcpy(char *dest, const char *src) {
+__device__ char *__gpu_strcpy(char *dest, const char *src) {
     for (size_t i = 0; src[i] != '\0'; i++) {
         dest[i] = src[i];
     }
     return dest;
 }
 
-__device__ char *strncpy(char *dest, const char *src, size_t n) {
+__device__ char *__gpu_strncpy(char *dest, const char *src, size_t n) {
     size_t i = 0;
     while (i < n && src[i] != '\0') {
         dest[i] = src[i];
@@ -22,9 +22,9 @@ __device__ char *strncpy(char *dest, const char *src, size_t n) {
     return dest;
 }
 
-__device__ char *strcat(char *s, const char *t) {
+__device__ char *__gpu_strcat(char *s, const char *t) {
     char *dest=s;
-    s+=strlen(s);
+    s+=__gpu_strlen(s);
     for (;;) {
         if (!(*s = *t)) break;
         ++s; ++t;
@@ -32,10 +32,10 @@ __device__ char *strcat(char *s, const char *t) {
     return dest;
 }
 
-__device__ char *strncat(char *s, const char *t, size_t n) {
+__device__ char *__gpu_strncat(char *s, const char *t, size_t n) {
     char *dest=s;
     register char *max;
-    s += strlen(s);
+    s += __gpu_strlen(s);
     if (((max=s+n)==s)) goto fini;
     for (;;) {
         if ((!(*s = *t))) break;
@@ -47,13 +47,13 @@ fini:
     return dest;
 }
 
-__device__ size_t strxfrm(char *dest, const char *src, size_t n) {
+__device__ size_t __gpu_strxfrm(char *dest, const char *src, size_t n) {
     memset(dest,0,n);
-    memccpy(dest,src,0,n);
-    return strlen(dest);
+    __gpu_memccpy(dest,src,0,n);
+    return __gpu_strlen(dest);
 }
 
-__device__ size_t strlen(const char *s) {
+__device__ size_t __gpu_strlen(const char *s) {
     size_t i;
     if (!s) return 0;
     for (i=0; (*s); ++s) ++i;
@@ -61,7 +61,7 @@ __device__ size_t strlen(const char *s) {
 }
 
 
-__device__ int strcmp(const char *s1, const char *s2) {
+__device__ int __gpu_strcmp(const char *s1, const char *s2) {
     while (*s1 != '\0' && *s1 == *s2) {
         s1++;
         s2++;
@@ -69,7 +69,7 @@ __device__ int strcmp(const char *s1, const char *s2) {
     return s1 - s2;
 }
 
-__device__ int strncmp(const char *s1, const char *s2, size_t n) {
+__device__ int __gpu_strncmp(const char *s1, const char *s2, size_t n) {
   const unsigned char* a=(const unsigned char*)s1;
   const unsigned char* b=(const unsigned char*)s2;
   const unsigned char* fini=a+n;
@@ -82,11 +82,11 @@ __device__ int strncmp(const char *s1, const char *s2, size_t n) {
   return 0;
 }
 
-__device__ int strcoll(const char *s1, const char *s2) {
-    return strcmp(s1, s2);
+__device__ int __gpu_strcoll(const char *s1, const char *s2) {
+    return __gpu_strcmp(s1, s2);
 }
 
-__device__ char *strchr(const char *t, int c) {
+__device__ char *__gpu_strchr(const char *t, int c) {
   char ch;
   ch = c;
   for (;;) {
@@ -96,7 +96,7 @@ __device__ char *strchr(const char *t, int c) {
   return (char*)t;
 }
 
-__device__ char *strrchr(const char *t, int c) {
+__device__ char *__gpu_strrchr(const char *t, int c) {
   char ch;
   const char *l=0;
   ch = c;
@@ -108,7 +108,7 @@ __device__ char *strrchr(const char *t, int c) {
   return (char*)l;
 }
 
-__device__ size_t strspn(const char *s, const char *accept) {
+__device__ size_t __gpu_strspn(const char *s, const char *accept) {
   size_t l = 0;
   const char *a;
   for (; *s; s++) {
@@ -122,7 +122,7 @@ __device__ size_t strspn(const char *s, const char *accept) {
   return l;
 }
 
-__device__ size_t strcspn(const char *s, const char *reject) {
+__device__ size_t __gpu_strcspn(const char *s, const char *reject) {
   size_t l=0;
   int i;
   for (; *s; ++s) {
@@ -133,7 +133,7 @@ __device__ size_t strcspn(const char *s, const char *reject) {
   return l;
 }
 
-__device__ char *strpbrk(const char *s, const char *accept) {
+__device__ char *__gpu_strpbrk(const char *s, const char *accept) {
   unsigned int i;
   for (; *s; s++)
     for (i=0; accept[i]; i++)
@@ -142,14 +142,14 @@ __device__ char *strpbrk(const char *s, const char *accept) {
   return 0;
 }
 
-__device__ char *strstr(const char *haystack, const char *needle) {
-  size_t nl=strlen(needle);
-  size_t hl=strlen(haystack);
+__device__ char *__gpu_strstr(const char *haystack, const char *needle) {
+  size_t nl=__gpu_strlen(needle);
+  size_t hl=__gpu_strlen(haystack);
   size_t i;
   if (!nl) goto found;
   if (nl>hl) return 0;
   for (i=hl-nl+1; i; --i) {
-    if (*haystack==*needle && !memcmp(haystack,needle,nl))
+    if (*haystack==*needle && !__gpu_memcmp(haystack,needle,nl))
 found:
       return (char*)haystack;
     ++haystack;
@@ -157,18 +157,18 @@ found:
   return 0;
 }
 
-__device__ char *strtok(char *s, const char *delim) {
+__device__ char *__gpu_strtok(char *s, const char *delim) {
   static char *strtok_pos;
-  return strtok_r(s,delim,&strtok_pos);
+  return __gpu_strtok_r(s,delim,&strtok_pos);
 }
 
-__device__ char *strtok_r(char *s, const char *delim, char** ptrptr) {
+__device__ char *__gpu_strtok_r(char *s, const char *delim, char** ptrptr) {
   char*tmp=0;
   if (s==0) s=*ptrptr;
-  s+=strspn(s,delim);
+  s+=__gpu_strspn(s,delim);
   if ((*s)) {
     tmp=s;
-    s+=strcspn(s,delim);
+    s+=__gpu_strcspn(s,delim);
     if ((*s)) *s++=0;
   }
   *ptrptr=s;
@@ -177,12 +177,12 @@ __device__ char *strtok_r(char *s, const char *delim, char** ptrptr) {
 
 __device__ static const char message[] = "ERROR!";
 
-__device__ char* strerror(int errnum) {
+__device__ char* __gpu_strerror(int errnum) {
   //FIXME this is wrong, implement correctly when we have errno, for now this throws warning so it is easy to see
   return (char*)message;
 }
 
-__device__ void* memcpy (void *dst, const void *src, size_t n) {
+__device__ void* __gpu_memcpy(void *dst, const void *src, size_t n) {
     void           *res = dst;
     unsigned char  *c1, *c2;
     c1 = (unsigned char *) dst;
@@ -191,7 +191,7 @@ __device__ void* memcpy (void *dst, const void *src, size_t n) {
     return (res);
 }
 
-__device__ void *memccpy(void *dst, const void *src, int c, size_t count)
+__device__ void *__gpu_memccpy(void *dst, const void *src, int c, size_t count)
 {
   char *a = (char*) dst;
   const char *b = (char*) src;
@@ -207,7 +207,7 @@ __device__ void *memccpy(void *dst, const void *src, int c, size_t count)
   return 0;
 }
 
-__device__ void* memmove(void *dst, const void *src, size_t count) {
+__device__ void* __gpu_memmove(void *dst, const void *src, size_t count) {
   char *a = (char*) dst;
   const char *b = (char*) src;
   if (src!=dst)
@@ -226,7 +226,7 @@ __device__ void* memmove(void *dst, const void *src, size_t count) {
   return dst;
 }
 
-__device__ int memcmp(const void *dst, const void *src, size_t count) {
+__device__ int __gpu_memcmp(const void *dst, const void *src, size_t count) {
   int r;
   char *d = (char*) dst;
   char *s = (char*) src;
@@ -240,7 +240,7 @@ __device__ int memcmp(const void *dst, const void *src, size_t count) {
   return 0;
 }
 
-__device__ void* memchr(const void *s, int c, size_t n) {
+__device__ void* __gpu_memchr(const void *s, int c, size_t n) {
   const unsigned char *pc = (unsigned char *) s;
   for (;n--;pc++)
     if (*pc == c)
@@ -248,12 +248,12 @@ __device__ void* memchr(const void *s, int c, size_t n) {
   return 0;
 }
 
-__device__ double atof(const char *nptr) {
-  double tmp=strtod(nptr,0);
+__device__ double __gpu_atof(const char *nptr) {
+  double tmp=__gpu_strtod(nptr,0);
   return tmp;
 }
 
-__device__ int atoi(const char* s) {
+__device__ int __gpu_atoi(const char* s) {
   long int v=0;
   int sign=1;
   while ( *s == ' '  ||  (unsigned int)(*s - 9) < 5u) s++;
@@ -267,7 +267,7 @@ __device__ int atoi(const char* s) {
   return sign==-1?-v:v;
 }
 
-__device__ long int atol(const char* s) {
+__device__ long int __gpu_atol(const char* s) {
   long int v=0;
   int sign=0;
   while ( *s == ' ' || (unsigned int)(*s - 9) < 5u) ++s;
@@ -281,7 +281,7 @@ __device__ long int atol(const char* s) {
   return sign?-v:v;
 }
 
-__device__ long long int atoll(const char* s) {
+__device__ long long int __gpu_atoll(const char* s) {
   long long int v=0;
   int sign=1;
   while ( *s == ' '  ||  (unsigned int)(*s - 9) < 5u) ++s;
@@ -296,21 +296,21 @@ __device__ long long int atoll(const char* s) {
 }
 
 
-__device__ float strtof(const char*s , char** endptr) {
+__device__ float __gpu_strtof(const char*s , char** endptr) {
     float res;
-    res = strtod(s, endptr);
+    res = __gpu_strtod(s, endptr);
     return res;
 }
 
 
-__device__ double strtod(const char* s, char** endptr) {
+__device__ double __gpu_strtod(const char* s, char** endptr) {
     const char*  p     = s;
     float        value = 0.;
     int          sign  = +1;
     float        factor;
     unsigned int expo;
 
-    while ( isspace(*p) )
+    while ( __gpu_isspace(*p) )
         p++;
 
     switch (*p) {
@@ -368,26 +368,26 @@ done:
 
 
 
-__device__ long double strtold(const char* s, char** endptr) {
-    return strtod(s, endptr);
+__device__ long double __gpu_strtold(const char* s, char** endptr) {
+    return __gpu_strtod(s, endptr);
 }
 
 
 
-__device__ long long int strtoll(const char *nptr, char **endptr, int base)
+__device__ long long int __gpu_strtoll(const char *nptr, char **endptr, int base)
 {
   int neg=0;
   unsigned long long int v;
   const char*orig=nptr;
 
-  while(isspace(*nptr)) nptr++;
+  while(__gpu_isspace(*nptr)) nptr++;
 
-  if (*nptr == '-' && isalnum(nptr[1])) { neg=-1; nptr++; }
-  v=strtoull(nptr,endptr,base);
+  if (*nptr == '-' && __gpu_isalnum(nptr[1])) { neg=-1; nptr++; }
+  v=__gpu_strtoull(nptr,endptr,base);
   if (endptr && *endptr==nptr) *endptr=(char *)orig;
   if (v>LLONG_MAX) {
     if (v==0x8000000000000000ull && neg) {
-      errno=0;
+      __gpu_errno=0;
       return v;
     }
     return (neg?LLONG_MIN:LLONG_MAX);
@@ -395,19 +395,19 @@ __device__ long long int strtoll(const char *nptr, char **endptr, int base)
   return (neg?-v:v);
 }
 
-__device__ long int strtol(const char *nptr, char** endptr, int base) {
-    return strtoll(nptr, endptr, base);
+__device__ long int __gpu_strtol(const char *nptr, char** endptr, int base) {
+    return __gpu_strtoll(nptr, endptr, base);
 }
 
 
-__device__ unsigned long long int strtoull(const char *ptr, char **endptr, int base)
+__device__ unsigned long long int __gpu_strtoull(const char *ptr, char **endptr, int base)
 {
   int neg = 0, overflow = 0;
   long long int v=0;
   const char* orig;
   const char* nptr=ptr;
 
-  while(isspace(*nptr)) ++nptr;
+  while(__gpu_isspace(*nptr)) ++nptr;
 
   if (*nptr == '-') { neg=1; nptr++; }
   else if (*nptr == '+') ++nptr;
@@ -415,12 +415,12 @@ __device__ unsigned long long int strtoull(const char *ptr, char **endptr, int b
   if (base==16 && nptr[0]=='0') goto skip0x;
   if (base) {
     register unsigned int b=base-2;
-    if ((b>34)) { errno=EINVAL; return 0; }
+    if ((b>34)) { __gpu_errno=EINVAL; return 0; }
   } else {
     if (*nptr=='0') {
       base=8;
 skip0x:
-      if (((*(nptr+1)=='x')||(*(nptr+1)=='X')) && isxdigit(nptr[2])) {
+      if (((*(nptr+1)=='x')||(*(nptr+1)=='X')) && __gpu_isxdigit(nptr[2])) {
 	nptr+=2;
 	base=16;
       }
@@ -441,18 +441,18 @@ skip0x:
   }
   if ((nptr==orig)) {
     nptr=ptr;
-    errno=EINVAL;
+    __gpu_errno=EINVAL;
     v=0;
   }
   if (endptr) *endptr=(char *)nptr;
   if (overflow) {
-    errno=ERANGE;
+    __gpu_errno=ERANGE;
     return ULLONG_MAX;
   }
   return (neg?-v:v);
 }
 
-__device__ unsigned long long int strtoul(const char *ptr, char **endptr, int base) {
-  return strtoul(ptr, endptr, base);
+__device__ unsigned long int __gpu_strtoul(const char *ptr, char **endptr, int base) {
+  return __gpu_strtoull(ptr, endptr, base);
 }
 

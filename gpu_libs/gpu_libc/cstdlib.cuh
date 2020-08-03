@@ -1,2 +1,2 @@
 #pragma once
-#include "stdlib.h.cuh"
+#include "stdlib.cuh"

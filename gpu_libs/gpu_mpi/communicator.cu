@@ -8,9 +8,9 @@ using namespace cooperative_groups;
 
 #include "cuda_mpi.cuh"
 
-#include "mpi.h.cuh"
+#include "mpi.cuh"
 
-#include "assert.h.cuh"
+#include "assert.cuh"
 
 #include "stdlib.cuh"
 

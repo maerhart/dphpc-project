@@ -1,8 +1,4 @@
-#ifndef GETOPT_H_CUH
-#define GETOPT_H_CUH
+#pragma once
 
-#include "getopt.h"
+#include "getopt.cuh"
 
-
-
-#endif // GETOPT_H_CUH

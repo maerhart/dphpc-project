@@ -1,3 +1,3 @@
-#include "errno.h.cuh"
+#include "errno.cuh"
 
-__device__ int errno;
+__device__ int __gpu_errno;

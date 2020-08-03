@@ -1,12 +1,12 @@
 #include "datatypes.cuh"
-#include "mpi.h.cuh"
+#include "mpi.cuh"
 
 // cuda_mpi.cuh should be included before device specific standard library functions
 // because it relies on standard ones
 #include "cuda_mpi.cuh"
 
-#include "stdlib.h.cuh"
-#include "string.h.cuh"
+#include "stdlib.cuh"
+#include "string.cuh"
 
 #include <cooperative_groups.h>
 using namespace cooperative_groups;
@@ -74,7 +74,7 @@ __device__ int MPI_Finalize(void) {
 
 __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
     const char hardcoded_name[] = "GPU thread";
-    strcpy(name, hardcoded_name);
+    __gpu_strcpy(name, hardcoded_name);
     *resultlen = sizeof(hardcoded_name);
     return MPI_SUCCESS;
 }

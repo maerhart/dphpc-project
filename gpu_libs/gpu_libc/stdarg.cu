@@ -1,9 +1,9 @@
-#include "stdarg.h.cuh"
+#include "stdarg.cuh"
 
-#include "assert.h.cuh"
+#include "assert.cuh"
 #include "mp4_printf.cuh"
 
-__device__ int vfprintf(FILE *stream, const char *format, va_list ap) {
+__device__ int __gpu_vfprintf(__gpu_FILE *stream, const char *format, va_list ap) {
     int bufSize = 256;
     char* buffer = (char*) malloc(bufSize);
 

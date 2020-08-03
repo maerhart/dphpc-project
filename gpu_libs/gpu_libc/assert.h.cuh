@@ -1,9 +1,6 @@
-#ifndef ASSERT_H_CUH
-#define ASSERT_H_CUH
+#pragma once
 
-#include <assert.h>
-
-#define NOT_IMPLEMENTED assert(0);
+#include "assert.cuh"
 
 
-#endif // ASSERT_H_CUH
+

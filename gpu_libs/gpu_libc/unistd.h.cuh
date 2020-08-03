@@ -1,9 +1,10 @@
-#ifndef UNISTD_H_CUH
-#define UNISTD_H_CUH
+#pragma once
+
+#include "unistd.cuh"
 
 #include <unistd.h>
 
-#include "getopt.h.cuh"
+#include "getopt.cuh"
 
 #define gethostname __gpu_gethostname
 __device__ int gethostname(char *name, size_t len);
@@ -26,4 +27,3 @@ __device__ extern int optind, opterr, optopt;
 #define sleep __gpu_sleep
 __device__ unsigned int sleep(unsigned int seconds);
 
-#endif // UNISTD_H_CUH

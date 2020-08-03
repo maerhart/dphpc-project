@@ -8,6 +8,7 @@
 
 #include <cuda.h>
 #include <cooperative_groups.h>
+#include <curand_kernel.h>
 
 #include "device_vector.cuh"
 
@@ -337,12 +338,14 @@ private:
         , peakClockKHz(ctx.peakClockKHz)
         , unusedCommunicationContext(0)
     {
+        curand_init(0, 0, 0, &rand_state);
     }
 
     PendingOperations pendingOperations;
     
 public:
     int unusedCommunicationContext;
+    curandState_t rand_state;
 };
 
 struct MessageDescriptor {

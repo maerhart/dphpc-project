@@ -1,11 +1,5 @@
-#ifndef STDARG_H_CUH
-#define STDARG_H_CUH
+#pragma once
 
-#include <stdarg.h>
-
-#include "stdio.h.cuh"
+#include "stdarg.cuh"
 
 #define vfprintf __gpu_vfprintf
-__device__ int vfprintf(FILE *stream, const char *format, va_list ap);
-
-#endif // STDARG_H_CUH

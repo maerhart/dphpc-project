@@ -1,6 +1,7 @@
-#include "stdlib.h.cuh"
+#include "stdlib.cuh"
 
-#include "assert.h.cuh"
+#include "assert.cuh"
+#include "cuda_mpi.cuh"
 
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
@@ -26,12 +27,11 @@ __device__ void *__gpu_realloc(void *ptr, size_t size) {
 
 
 __device__ void __gpu_srand(unsigned int seed) {
-    NOT_IMPLEMENTED
+    curand_init(seed, 0, 0, &CudaMPI::threadPrivateState().rand_state);
 }
 
 __device__ int __gpu_rand(void) {
-    NOT_IMPLEMENTED
-    return 10;
+    return curand(&CudaMPI::threadPrivateState().rand_state);
 }
 
 __device__ char stub[] = "stub";
