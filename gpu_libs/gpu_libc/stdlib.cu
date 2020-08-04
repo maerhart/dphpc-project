@@ -21,7 +21,7 @@ __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
 }
 
 __device__ void *__gpu_realloc(void *ptr, size_t size) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return ptr;
 }
 
@@ -37,19 +37,21 @@ __device__ int __gpu_rand(void) {
 __device__ char stub[] = "stub";
 
 __device__ char *__gpu_getenv(const char *name) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return stub;
 }
 
 __device__ void __gpu_exit(int) {
+    printf("GPU_MPI: DEVICE-SIDE EXIT\n");
     asm("exit;");
 }
 
 __device__ void __gpu_abort() {
+    printf("GPU_MPI: DEVICE-SIDE ABORT\n");
     asm("trap;");
 }
 
 __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }

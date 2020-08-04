@@ -139,12 +139,12 @@ __device__ int MPI_Attr_get(MPI_Comm comm, int keyval,void *attribute_val, int *
 }
 
 __device__ int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[], const int periods[], int reorder, MPI_Comm *comm_cart) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *comm_new) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 

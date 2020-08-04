@@ -175,10 +175,12 @@ __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
 }
 
 __device__ int MPI_Type_contiguous(int count, MPI_Datatype oldtype, MPI_Datatype *newtype) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Type_commit(MPI_Datatype *datatype) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
@@ -219,9 +221,11 @@ __device__ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
     return MPI_Bcast(recvbuf, count, datatype, 0, comm);
 }
 __device__ int MPI_Abort(MPI_Comm comm, int errorcode) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Type_size(MPI_Datatype datatype, int *size) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -257,17 +261,20 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
 }
 
 __device__ int MPI_Barrier(MPI_Comm comm) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
             MPI_Datatype sendtype, void *recvbuf, int recvcount,
             MPI_Datatype recvtype, MPI_Comm comm) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
             const int sdispls[], MPI_Datatype sendtype,
             void *recvbuf, const int recvcounts[],
             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
@@ -286,38 +293,44 @@ __device__ int MPI_Allgatherv(const void *sendbuf, int sendcount,
                               MPI_Datatype sendtype, void *recvbuf, const int recvcounts[],
                               const int displs[], MPI_Datatype recvtype, MPI_Comm comm)
 {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, const int recvcounts[], const int displs[], MPI_Datatype recvtype,
                            int root, MPI_Comm comm) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
                            MPI_Comm comm) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_NULL_COPY_FN(MPI_Comm oldcomm, int keyval,
                      void *extra_state, void *attribute_val_in,
                      void *attribute_val_out, int *flag) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_NULL_DELETE_FN(MPI_Comm comm, int keyval,
                        void *attribute_val, void *extra_state) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
                                  MPI_Delete_function *delete_fn, int *keyval, void *extra_state) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Dims_create(int nnodes, int ndims, int dims[]) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
@@ -353,6 +366,7 @@ __device__ int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int 
 
 __device__ int MPI_Testall(int count, MPI_Request array_of_requests[],
             int *flag, MPI_Status array_of_statuses[]) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
@@ -365,12 +379,14 @@ __device__ int MPI_Waitall(int count, MPI_Request array_of_requests[],
 }
 
 __device__ int MPI_Initialized(int *flag) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 
 __device__ int MPI_Waitsome(int incount, MPI_Request array_of_requests[],
             int *outcount, int array_of_indices[],
             MPI_Status array_of_statuses[]) {
+    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 __device__ int MPI_Wait(MPI_Request *request, MPI_Status *status) {

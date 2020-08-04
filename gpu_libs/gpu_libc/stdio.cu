@@ -22,43 +22,43 @@ __device__ int __gpu_fflush(__gpu_FILE */*__stream*/) {
 }
 
 __device__ __gpu_FILE *__gpu_fopen(const char *pathname, const char *mode) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return __gpu_stdout;
 }
 
 __device__ int __gpu_fclose(__gpu_FILE *stream) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
 
 __device__ static char stub[] = "stub";
 
 __device__ char *__gpu_fgets(char *s, int size, __gpu_FILE *stream) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return stub;
 }
 
 __device__ int __gpu_putchar(int c) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
 
 __device__ int __gpu_sprintf(char *str, const char *format, ...) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
 
 __device__ int __gpu_puts(const char *s) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
 
 __device__ int __gpu_fgetc(__gpu_FILE *stream) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
 
 __device__ int __gpu_feof(__gpu_FILE *stream) {
-    NOT_IMPLEMENTED
+    NOT_IMPLEMENTED;
     return 0;
 }
