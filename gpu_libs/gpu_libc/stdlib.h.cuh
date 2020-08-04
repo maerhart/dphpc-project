@@ -3,6 +3,11 @@
 
 #include "stdlib.cuh"
 
+#ifdef RAND_MAX
+#undef RAND_MAX
+#endif
+#define RAND_MAX __gpu_RAND_MAX
+
 #define qsort __gpu_qsort
 #define atoi __gpu_atoi
 #define atol __gpu_atol
