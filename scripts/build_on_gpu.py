@@ -72,6 +72,7 @@ def get_definitions(absolute_path, compile_commands):
     raise Exception(f'Entry {absolute_path} not found in compilation database')
 
 def run_build():
+    os.makedirs('./gpumpi_build')
     process = subprocess.Popen("cmake ..".split(), cwd='./gpumpi_build')
     process.wait()
     process = subprocess.Popen("cmake --build ./gpumpi_build".split())
