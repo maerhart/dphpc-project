@@ -88,6 +88,9 @@ __device__ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype send
 __device__ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
                            MPI_Comm comm);
+__device__ int MPI_Scatterv(const void *sendbuf, const int sendcounts[], const int displs[],
+                            MPI_Datatype sendtype, void *recvbuf, int recvcount,
+                            MPI_Datatype recvtype, int root, MPI_Comm comm);
 
 typedef int MPI_Copy_function(MPI_Comm oldcomm, int keyval,
                                        void *extra_state, void *attribute_val_in,

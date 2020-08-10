@@ -334,6 +334,34 @@ __device__ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype send
     
     return MPI_SUCCESS;
 }
+__device__ int MPI_Scatterv(const void *sendbuf, const int sendcounts[], const int displs[],
+                            MPI_Datatype sendtype, void *recvbuf, int recvcount,
+                            MPI_Datatype recvtype, int root, MPI_Comm comm)
+{
+    int comm_size = -1;
+    int comm_rank = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
+    assert(recvElemSize > 0);
+
+    if (comm_rank != root) {
+        MPI_Recv(recvbuf, recvcount, recvtype, root, MPI_COLLECTIVE_TAG, comm, MPI_STATUS_IGNORE);
+    } else {
+        int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
+        assert(sendElemSize > 0);
+        for (int r = 0; r < comm_size; r++) {
+            if (r == root) {
+                memcpy(recvbuf, ((char*)sendbuf) + r * displs[r] * sendElemSize, sendcounts[r] * sendElemSize);
+            } else {
+                MPI_Send(((char*)sendbuf) + r * displs[r] * sendElemSize, sendcounts[r], sendtype, r, MPI_COLLECTIVE_TAG, comm);
+            }
+        }
+    }
+    
+    return MPI_SUCCESS;
+}
 
 __device__ int MPI_NULL_COPY_FN(MPI_Comm oldcomm, int keyval,
                      void *extra_state, void *attribute_val_in,
