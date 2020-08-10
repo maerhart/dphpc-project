@@ -305,8 +305,33 @@ __device__ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype send
 }
 __device__ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
-                           MPI_Comm comm) {
-    NOT_IMPLEMENTED;
+                           MPI_Comm comm)
+{
+    int comm_size = -1;
+    int comm_rank = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
+    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
+    assert(sendElemSize > 0);
+    assert(recvElemSize > 0);
+
+    assert(sendElemSize * sendcount == recvElemSize * recvcount);
+    int dataSize = sendElemSize * sendcount;
+
+    if (comm_rank != root) {
+        MPI_Recv(recvbuf, recvcount, recvtype, root, MPI_COLLECTIVE_TAG, comm, MPI_STATUS_IGNORE);
+    } else {
+        for (int r = 0; r < comm_size; r++) {
+            if (r == root) {
+                memcpy(recvbuf, ((char*)sendbuf) + r * dataSize, dataSize);
+            } else {
+                MPI_Send(((char*)sendbuf) + r * dataSize, sendcount, sendtype, r, MPI_COLLECTIVE_TAG, comm);
+            }
+        }
+    }
+    
     return MPI_SUCCESS;
 }
 
