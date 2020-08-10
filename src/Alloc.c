@@ -6,11 +6,19 @@ void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
 	void** arr;
 	if(dim < 2){
 		arr = (void**) malloc(sz1*typesize);
+        if (!arr) {
+            printf("Malloc can't allocate memory, aborting...\n");
+            abort();
+        }
 		memset((void*) arr, 0, sz1*typesize);
 		return (void*) arr;
 	}
 	else{
 		arr = (void**) malloc(sz1*sizeof(void*));
+        if (!arr) {
+            printf("Malloc can't allocate memory, aborting...\n");
+            abort();
+        }
 	}
 
 	size_t sz2 = va_arg(sizeargs, size_t);
