@@ -22,7 +22,7 @@ void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
 	}
 	for (size_t i = 0; i < sz1; i++) {
 		arr[i] = ptr;
-		ptr += sz2*size;
+		ptr = ((char*)ptr) + sz2*size;
 	}
 	return (void*) arr;
 }
@@ -77,7 +77,7 @@ void **ptrArr(void **in, int typesize, int dim, ...){
 	// Set pointer location for bottom pointer array to point to data
 	for(size_t i=0; i<szarr; i++){
 		arr2[i] = ptr;
-		ptr += sz0*typesize;
+		ptr = ((char*)ptr) + sz0*typesize;
 	}
 
 	va_end(args);

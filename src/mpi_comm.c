@@ -92,8 +92,8 @@ int mpi_scatter_particles(struct particles *part_global, struct particles *part_
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	int counts[size];
-	int displ[size];
+	int* counts = malloc(sizeof(int) * size);
+	int* displ = malloc(sizeof(int) * size);
 	int batch_sum = 0;
 
 	for(int i=0; i<size; i++){
@@ -141,6 +141,10 @@ int mpi_scatter_particles(struct particles *part_global, struct particles *part_
 	// 	);
 
 	part_local->nop = counts[rank];
+
+    free(counts);
+    free(displ);
+
 	return batch_sum;
 
 }
@@ -161,8 +165,8 @@ void mpi_gather_particles(struct particles *part_global, struct particles *part_
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	int counts[size];
-	int displ[size];
+	int* counts = malloc(sizeof(int) * size);
+	int* displ = malloc(sizeof(int) * size);
 
 	for(int i=0; i<size; i++){
 		if(offset + batchsize >= num_particles){
@@ -207,6 +211,9 @@ void mpi_gather_particles(struct particles *part_global, struct particles *part_
 	// 	part_global->track_particle, counts[rank], MPI_C_BOOL,
 	// 	0, MPI_COMM_WORLD
 	// 	);
+    
+    free(counts);
+    free(displ);
 
 }
 
