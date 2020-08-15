@@ -7,7 +7,7 @@ void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
 	if(dim < 2){
 		arr = (void**) malloc(sz1*typesize);
         if (!arr) {
-            printf("Malloc can't allocate memory, aborting...\n");
+            printf("Malloc can't allocate %llu bytes of memory, aborting...\n", (long long unsigned)(sz1 * typesize));
             abort();
         }
 		memset((void*) arr, 0, sz1*typesize);
@@ -16,12 +16,12 @@ void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
 	else{
 		arr = (void**) malloc(sz1*sizeof(void*));
         if (!arr) {
-            printf("Malloc can't allocate memory, aborting...\n");
+            printf("Malloc can't allocate %llu bytes of memory, aborting...\n", (long long unsigned)(sz1 * sizeof(void*)));
             abort();
         }
 	}
 
-	size_t sz2 = va_arg(sizeargs, size_t);
+	size_t sz2 = va_arg(sizeargs, int);
 	void* ptr = _newArr(typesize, dim-1, sz1*sz2, sizeargs);
 
 	int size = typesize;
@@ -42,7 +42,7 @@ void *newArr(int typesize, int dim, ...){
 
 	va_list args;
 	va_start(args, dim);
-	size_t sz1 = va_arg(args, size_t);
+	size_t sz1 = va_arg(args, int);
 	void* arr = _newArr(typesize, dim, sz1, args);
 	va_end(args);
 
@@ -64,16 +64,16 @@ void **ptrArr(void **in, int typesize, int dim, ...){
 	// Calculate combined sizes
 	size_t szarr = 1;
 	for(int i=0; i<dim-1; i++){
-		szarr *= va_arg(args, size_t);
+		szarr *= va_arg(args, int);
 	}
-	size_t sz0 = va_arg(args, size_t);
+	size_t sz0 = va_arg(args, int);
 
 	// Array to hold data
 	*in = newArr(typesize, 1, szarr*sz0);
 	void *ptr = *in;
 
 	// Create hierarchy of pointer to pointer arrays, d-1 deep.
-	size_t sz1 = va_arg(args_cpy, size_t);
+	size_t sz1 = va_arg(args_cpy, int);
 	void **arr = (void**)_newArr(sizeof(void*), dim-1, sz1, args_cpy);
 	void **arr2 = arr;
 
