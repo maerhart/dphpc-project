@@ -55,3 +55,13 @@ __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size
     NOT_IMPLEMENTED;
     return 0;
 }
+
+__device__ void* __gpu_malloc(size_t size) {
+    void* ptr = malloc(size);
+    if (ptr) {
+        printf("GPUMPI: successful allocation of %llu bytes on device\n", (long long unsigned)size);
+    } else {
+        printf("GPUMPI: failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    return ptr;
+}

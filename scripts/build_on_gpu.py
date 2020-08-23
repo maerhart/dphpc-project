@@ -172,7 +172,7 @@ if __name__ == '__main__':
         project(examples LANGUAGES C CXX CUDA)
 
         set(CMAKE_CUDA_FLAGS \
-            "${{CMAKE_CUDA_FLAGS}} \
+            "${{CMAKE_CUDA_FLAGS}} -g -G\
             -gencode arch=compute_60,code=sm_60 \
             -gencode arch=compute_61,code=sm_61 \
             -gencode arch=compute_70,code=sm_70")

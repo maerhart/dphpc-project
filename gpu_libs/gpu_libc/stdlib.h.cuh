@@ -20,4 +20,8 @@
 #define strtod __gpu_strtod
 #define posix_memalign __gpu_posix_memalign
 
+// uncomment following line only if you want to provide custom malloc implementation
+// instead of default nvcc provided malloc
+//#define malloc __gpu_malloc
+
 #endif // STDLIB_H_CUH
