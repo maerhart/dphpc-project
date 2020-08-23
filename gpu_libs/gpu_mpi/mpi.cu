@@ -261,7 +261,11 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
 }
 
 __device__ int MPI_Barrier(MPI_Comm comm) {
-    NOT_IMPLEMENTED;
+    if (comm == MPI_COMM_WORLD) { 
+        this_multi_grid().sync();
+    } else {
+        NOT_IMPLEMENTED;
+    }
     return MPI_SUCCESS;
 }
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
@@ -353,9 +357,9 @@ __device__ int MPI_Scatterv(const void *sendbuf, const int sendcounts[], const i
         assert(sendElemSize > 0);
         for (int r = 0; r < comm_size; r++) {
             if (r == root) {
-                memcpy(recvbuf, ((char*)sendbuf) + r * displs[r] * sendElemSize, sendcounts[r] * sendElemSize);
+                memcpy(recvbuf, ((char*)sendbuf) + displs[r] * sendElemSize, sendcounts[r] * sendElemSize);
             } else {
-                MPI_Send(((char*)sendbuf) + r * displs[r] * sendElemSize, sendcounts[r], sendtype, r, MPI_COLLECTIVE_TAG, comm);
+                MPI_Send(((char*)sendbuf) + displs[r] * sendElemSize, sendcounts[r], sendtype, r, MPI_COLLECTIVE_TAG, comm);
             }
         }
     }
