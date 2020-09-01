@@ -1,3 +1,11 @@
 #!/bin/bash
 
-../../scripts/convert_and_build.sh && gpumpi_build/target_bin___global_var_c_cu ---gpumpi -g 4 -b 1
+scriptdir=$(dirname "$0")
+
+cd "$scriptdir"
+
+"$scriptdir/../../scripts/convert_and_build.sh"
+
+binary=$(find "$scriptdir/gpumpi_build" -name 'target_*_global_var_c')
+
+"$binary" ---gpumpi -g 4 -b 1
