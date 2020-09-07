@@ -5,7 +5,7 @@
 
 #include "assert.cuh"
 
-#define __gpu_RAND_MAX ((unsigned int)-1)
+#define __gpu_RAND_MAX INT_MAX
 
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                   int (*compar)(const void *, const void *));

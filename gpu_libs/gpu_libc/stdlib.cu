@@ -31,7 +31,12 @@ __device__ void __gpu_srand(unsigned int seed) {
 }
 
 __device__ int __gpu_rand(void) {
-    return curand(&CudaMPI::threadPrivateState().rand_state);
+    unsigned int uval = curand(&CudaMPI::threadPrivateState().rand_state);
+    // use 31 bits of randomness instead of 32 bits
+    // and make sure that result in [0, __gpu_RAND_MAX]
+    int val = uval / 2; 
+    assert(0 <= val && val <= __gpu_RAND_MAX);
+    return val;
 }
 
 __device__ char stub[] = "stub";
