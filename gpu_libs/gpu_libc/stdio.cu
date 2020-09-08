@@ -4,6 +4,8 @@
 
 #include "stdarg.cuh"
 
+#include "mp4_printf.cuh"
+
 __device__ __gpu_FILE *__gpu_stdout = (__gpu_FILE*) 1;
 
 __device__ __gpu_FILE *__gpu_stderr = (__gpu_FILE*) 2;
@@ -44,7 +46,10 @@ __device__ int __gpu_putchar(int c) {
 }
 
 __device__ int __gpu_sprintf(char *str, const char *format, ...) {
-    NOT_IMPLEMENTED;
+    va_list arglist;
+    va_start(arglist, format);
+    const int ret = vsnprintf_(str, (size_t)(-1), format, arglist);
+    va_end(arglist);
     return 0;
 }
 
