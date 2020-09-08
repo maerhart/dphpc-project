@@ -232,6 +232,7 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
                           void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
                           MPI_Comm comm)
 {
+    // TODO implement through MPI_Gatherv
     int comm_size = -1;
     int comm_rank = -1;
     MPI_Comm_size(comm, &comm_size);
@@ -303,14 +304,38 @@ __device__ int MPI_Allgatherv(const void *sendbuf, int sendcount,
 
 __device__ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, const int recvcounts[], const int displs[], MPI_Datatype recvtype,
-                           int root, MPI_Comm comm) {
-    NOT_IMPLEMENTED;
+                           int root, MPI_Comm comm)
+{
+    // TODO implement through MPI_Igatherv
+    int comm_size = -1;
+    int comm_rank = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
+    assert(sendElemSize > 0);
+
+    if (comm_rank != root) {
+        MPI_Send(sendbuf, sendcount, sendtype, root, MPI_COLLECTIVE_TAG, comm);
+    } else {
+        int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
+        assert(recvElemSize > 0);
+        for (int r = 0; r < comm_size; r++) {
+            if (r == root) {
+                memcpy(((char*)recvbuf) + displs[r] * recvElemSize, sendbuf, recvcounts[r] * recvElemSize);
+            } else {
+                MPI_Recv(((char*)recvbuf) + displs[r] * recvElemSize, recvcounts[r], recvtype, r, MPI_COLLECTIVE_TAG, comm, MPI_STATUS_IGNORE);
+            }
+        }
+    }
+    
     return MPI_SUCCESS;
 }
 __device__ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, int recvcount, MPI_Datatype recvtype, int root,
                            MPI_Comm comm)
 {
+    // TODO implement through MPI_Scatterv
     int comm_size = -1;
     int comm_rank = -1;
     MPI_Comm_size(comm, &comm_size);
