@@ -7,6 +7,10 @@ import re
 import shutil
 import textwrap
 
+# this variable is assigned by cmake during build
+GPU_MPI_BUILD_TYPE = "@CMAKE_BUILD_TYPE@"
+
+
 def is_inside(path, directory):
     path = os.path.realpath(path)
     directory = os.path.realpath(directory)
@@ -73,7 +77,7 @@ def get_definitions(absolute_path, compile_commands):
 
 def run_build():
     os.makedirs('./gpumpi_build', exist_ok=True)
-    process = subprocess.Popen("cmake ..".split(), cwd='./gpumpi_build')
+    process = subprocess.Popen(f"cmake .. -DCMAKE_BUILD_TYPE={GPU_MPI_BUILD_TYPE}".split(), cwd='./gpumpi_build')
     process.wait()
     process = subprocess.Popen("cmake --build ./gpumpi_build".split())
     process.wait()
@@ -171,8 +175,14 @@ if __name__ == '__main__':
         cmake_minimum_required(VERSION 3.12)
         project(examples LANGUAGES C CXX CUDA)
 
-        set(CMAKE_CUDA_FLAGS \
-            "${{CMAKE_CUDA_FLAGS}} -g -G\
+        set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G") 
+
+        # specify cuda architectures for newer cmake
+        set(CMAKE_CUDA_ARCHITECTURES 60 61 70)
+
+        # specify cuda architectures for older cmake
+        set(CMAKE_CUDA_FLAGS
+            "${CMAKE_CUDA_FLAGS} \
             -gencode arch=compute_60,code=sm_60 \
             -gencode arch=compute_61,code=sm_61 \
             -gencode arch=compute_70,code=sm_70")
