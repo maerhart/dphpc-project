@@ -32,4 +32,6 @@ __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size
 
 __device__ void* __gpu_malloc(size_t size);
 
+__device__ void* __gpu_calloc(size_t nmemb, size_t size);
+
 #endif

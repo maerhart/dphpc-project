@@ -24,4 +24,6 @@
 // instead of default nvcc provided malloc
 //#define malloc __gpu_malloc
 
+#define calloc __gpu_calloc
+
 #endif // STDLIB_H_CUH

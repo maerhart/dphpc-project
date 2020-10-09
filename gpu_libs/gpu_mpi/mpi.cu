@@ -269,10 +269,50 @@ __device__ int MPI_Barrier(MPI_Comm comm) {
     }
     return MPI_SUCCESS;
 }
+
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
             MPI_Datatype sendtype, void *recvbuf, int recvcount,
-            MPI_Datatype recvtype, MPI_Comm comm) {
-    NOT_IMPLEMENTED;
+            MPI_Datatype recvtype, MPI_Comm comm)
+{
+    int comm_size = -1;
+    int comm_rank = -1;
+    MPI_Comm_size(comm, &comm_size);
+    MPI_Comm_rank(comm, &comm_rank);
+
+    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
+    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
+
+    MPI_Request* send_requests = (MPI_Request*) malloc(sizeof(MPI_Request) * comm_size);
+    MPI_Request* recv_requests = (MPI_Request*) malloc(sizeof(MPI_Request) * comm_size);
+    assert(send_requests && "Can't allocate memory");
+    assert(recv_requests && "Can't allocate memory");
+
+    for (int i = 0; i < comm_size; i++) {
+        if (i != comm_rank) {
+            MPI_Isend(((char*)sendbuf) + i * sendcount * sendElemSize, sendcount, sendtype, i, MPI_COLLECTIVE_TAG, comm, &send_requests[i]);
+        }
+    }
+
+    for (int i = 0; i < comm_size; i++) {
+        if (i != comm_rank) {
+            MPI_Irecv(((char*)recvbuf) + i * recvcount * recvElemSize, recvcount, recvtype, i, MPI_COLLECTIVE_TAG, comm, &recv_requests[i]);
+        }
+    }
+
+    memcpy(((char*)recvbuf) + comm_rank * recvcount * recvElemSize, 
+           ((char*)sendbuf) + comm_rank * sendcount * sendElemSize,
+           recvcount * recvElemSize);
+
+    for (int i = 0; i < comm_size; i++) {
+        if (i != comm_rank) {
+            MPI_Wait(&send_requests[i], MPI_STATUS_IGNORE);
+            MPI_Wait(&recv_requests[i], MPI_STATUS_IGNORE);
+        }
+    }
+
+    free(send_requests);
+    free(recv_requests);
+
     return MPI_SUCCESS;
 }
 __device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],

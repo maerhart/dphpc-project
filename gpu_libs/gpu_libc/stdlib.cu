@@ -70,3 +70,12 @@ __device__ void* __gpu_malloc(size_t size) {
     }
     return ptr;
 }
+
+__device__ void* __gpu_calloc(size_t nmemb, size_t size) {
+    void* ptr = malloc(nmemb * size);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
