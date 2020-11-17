@@ -21,10 +21,10 @@ __device__ SharedState& sharedState() {
 };
 
 __device__ void setSharedState(SharedState* sharedState) {
-    if (cg::this_grid().thread_rank() == 0) {
+    if (sharedState->gridRank() == 0) {
         VOLATILE(gSharedState) = sharedState;
     }
-    cg::this_grid().sync();
+    sharedState->gridBarrier();
 }
 
 __device__ PendingOperation* ThreadPrivateState::allocatePendingOperation() {
@@ -37,19 +37,19 @@ __device__ ThreadPrivateState* gThreadLocalState = nullptr;
 
 __device__ ThreadPrivateState& threadPrivateState() {
     assert(gThreadLocalState != nullptr);
-    int gridIdx = cg::this_grid().thread_rank();
+    int gridIdx = sharedState().gridRank();
     return gThreadLocalState[gridIdx];
 }
 
 __device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
     assert(ctx.valid());
     LOG("initializeThreadPrivateState");
-    if (0 == cg::this_grid().thread_rank()) {
-        gThreadLocalState = (ThreadPrivateState*)malloc(cg::this_grid().size() * sizeof(ThreadPrivateState));
+    if (0 == sharedState().gridRank()) {
+        gThreadLocalState = (ThreadPrivateState*)malloc(sharedState().gridSize() * sizeof(ThreadPrivateState));
         assert(gThreadLocalState);
-        __threadfence_system();
+        //__threadfence_system(); // not required anymore, barrier makes sure this change is visible before
     }
-    cg::this_grid().sync();
+    sharedState().gridBarrier();
     assert(gThreadLocalState);
     new (&threadPrivateState()) ThreadPrivateState(ctx);
 }
@@ -57,8 +57,8 @@ __device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
 __device__ ThreadPrivateState::Holder::~Holder() {
     LOG("destroyThreadPrivateState");
     threadPrivateState().~ThreadPrivateState();
-    cg::this_grid().sync();
-    if (0 == cg::this_grid().thread_rank()) {
+    sharedState().gridBarrier();
+    if (0 == sharedState().gridRank()) {
         free(gThreadLocalState);
     }
 }
@@ -239,7 +239,7 @@ __device__ void progressStartedSend(PendingOperation& send, ProgressState& state
         state.markStartedSendSkip(send.otherThread); 
     });
 
-    int src = cg::this_grid().thread_rank();
+    int src = sharedState().gridRank();
 
     LOG("Trying to lock state of other process");
     if (!otherThreadState.recvLock.tryLock()) {
@@ -388,7 +388,7 @@ __device__ void progressSend(PendingOperation& send, ProgressState& state) {
 __device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state) {
     LOG("progressStartedRecv() %p", &recv);
 
-    int dst = cg::this_grid().thread_rank();
+    int dst = sharedState().gridRank();
     
     if (state.isStartedRecvSkip(recv.otherThread)) {
         LOG("Skip recv, because some earlier started recv is not processed");
@@ -626,7 +626,7 @@ __device__ void progressRecv(PendingOperation& recv, ProgressState& state) {
 __device__ void receiveFragmentPointers() {
     LOG("receiveFragmentPointers()");
 
-    int curThread = cg::this_grid().thread_rank();
+    int curThread = sharedState().gridRank();
     SharedState& ss = sharedState();
     volatile SharedThreadState& sts = ss.sharedThreadState[curThread];
 
@@ -720,7 +720,7 @@ DeviceToHostCommunicator::DeviceToHostCommunicator(size_t queueSize, size_t numT
 }
 
 __device__ void DeviceToHostCommunicator::delegateToHost(void* ptr, size_t size) {
-    int threadRank = cg::this_multi_grid().thread_rank();
+    int threadRank = sharedState().gridRank();
     assert(hostFinished[threadRank] == false);
 
     while (true) {

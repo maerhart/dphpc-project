@@ -7,7 +7,6 @@ set(CMAKE_INCLUDE_CURRENT_DIR_IN_INTERFACE ON) # all subdirs will be automatical
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) # prevents mess with host/device linking of the functions with the same name
 
-# enable cooperative groups (compute capability >= 6.0)
 # enable system-wide atomics: atomicCAS_system (compute capability >= 6.0)
 set(CMAKE_CUDA_FLAGS 
     "${CMAKE_CUDA_FLAGS} \

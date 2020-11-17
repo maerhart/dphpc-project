@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
 
     // increase stack size (defaut is 1024)
-    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 256));
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 64));
     // increase heap size (default is 8388608)
     CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, size_t{8388608} * size_t{64}));
 
@@ -161,7 +161,10 @@ int main(int argc, char* argv[]) {
 
     std::cerr << "GPUMPI: Starting kernel!" << std::endl;
     // here we actually call __gpu_main
-    CUDA_CHECK(cudaLaunchCooperativeKernelMultiDevice(launchParamsList.data(), deviceCount));
+    //CUDA_CHECK(cudaLaunchCooperativeKernelMultiDevice(launchParamsList.data(), deviceCount));
+    for(int i = 0; i < deviceCount; i++) {
+        CUDA_CHECK(cudaLaunchKernel((void*)__gpu_main_caller, blocksPerGrid, threadsPerBlock, params[i].data(), 0, cudaStreams[i]));
+    }
     std::cerr << "GPUMPI: Processing messages from device threads" << std::endl;
 
     std::set<int> unfinishedThreads;
@@ -176,7 +179,7 @@ int main(int argc, char* argv[]) {
                 assert(erased);
             } else {
                 process_gpu_libc(ptr, size);
-            }
+            } 
         });
     }
 

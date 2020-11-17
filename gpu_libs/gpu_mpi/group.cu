@@ -1,10 +1,8 @@
 #include "group.cuh"
 
+#include "cuda_mpi.cuh"
 #include "mpi_common.cuh"
 #include "device_vector.cuh"
-
-#include <cooperative_groups.h>
-using namespace cooperative_groups;
 
 struct MPI_Group_impl {
     __device__ MPI_Group_impl() : ref_count(1) {}
@@ -20,22 +18,22 @@ __device__ MPI_Group MPI_GROUP_NULL = nullptr;
 namespace gpu_mpi {
 
 __device__ void initializeGlobalGroups() {
-    if (this_grid().thread_rank() == 0) {
+    if (CudaMPI::sharedState().gridRank() == 0) {
         MPI_GROUP_EMPTY = new MPI_Group_impl;
         
         MPI_GROUP_WORLD = new MPI_Group_impl;
-        int size = this_grid().size();
+        int size = CudaMPI::sharedState().gridSize();
         MPI_GROUP_WORLD->ranks.resize(size);
         for (int i = 0; i < size; ++i) {
             MPI_GROUP_WORLD->ranks[i] = i;
         }
     }
-    this_grid().sync();
+    CudaMPI::sharedState().gridBarrier();
 }
 
 __device__ void destroyGlobalGroups() {
-    this_grid().sync();
-    if (this_grid().thread_rank() == 0) {
+    CudaMPI::sharedState().gridBarrier();
+    if (CudaMPI::sharedState().gridRank() == 0) {
         delete MPI_GROUP_EMPTY;
         delete MPI_GROUP_WORLD;
     }
@@ -110,7 +108,7 @@ __device__ int MPI_Group_size(MPI_Group group, int *size) {
 }
 
 __device__ int MPI_Group_rank(MPI_Group group, int *rank) {
-    int currentRank = this_multi_grid().thread_rank();
+    int currentRank = CudaMPI::sharedState().gridRank();
     
     for (int groupRank = 0; groupRank < group->ranks.size(); groupRank++) {
         int globalRank = group->ranks[groupRank];

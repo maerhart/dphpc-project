@@ -2,6 +2,7 @@
 #include "mpi_common.cuh"
 #include "operators.cuh"
 
+#include "cuda_mpi.cuh"
 #include "mpi.h.cuh"
 #include "mpi_operators_list.cuh"
 
@@ -11,9 +12,6 @@
 #include <stdio.h>
 
 #include <type_traits>
-
-#include <cooperative_groups.h>
-using namespace cooperative_groups;
 
 #define MPI_OP_LIST_DEF_F(name, class) __device__ MPI_Op name = nullptr;
 #define MPI_OP_LIST_DEF_SEP
@@ -262,10 +260,10 @@ namespace gpu_mpi {
 #define MPI_OP_LIST_INIT_F(name, class) name = new MPI_Op_impl(OpDispatcher<class>);
 #define MPI_OP_LIST_INIT_SEP
 __device__ void initializeOps() {
-    if (this_grid().thread_rank() == 0) {
+    if (CudaMPI::sharedState().gridRank() == 0) {
         MPI_OPERATORS_LIST(MPI_OP_LIST_INIT_F, MPI_OP_LIST_INIT_SEP)
     }
-    this_grid().sync();
+    CudaMPI::sharedState().gridBarrier();
 }
 #undef MPI_OP_LIST_INIT_F
 #undef MPI_OP_LIST_INIT_SEP
@@ -274,8 +272,8 @@ __device__ void initializeOps() {
 #define MPI_OP_LIST_DEL_SEP
 
 __device__ void destroyOps() {
-    this_grid().sync();
-    if (this_grid().thread_rank() == 0) {
+    CudaMPI::sharedState().gridBarrier();
+    if (CudaMPI::sharedState().gridRank() == 0) {
         MPI_OPERATORS_LIST(MPI_OP_LIST_DEL_F, MPI_OP_LIST_DEL_SEP)
     }
 }

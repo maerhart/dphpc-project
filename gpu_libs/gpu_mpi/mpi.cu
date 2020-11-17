@@ -8,9 +8,6 @@
 #include "stdlib.cuh"
 #include "string.cuh"
 
-#include <cooperative_groups.h>
-using namespace cooperative_groups;
-
 #include "mpi_common.cuh"
 
 #include "device_vector.cuh"
@@ -263,7 +260,7 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
 
 __device__ int MPI_Barrier(MPI_Comm comm) {
     if (comm == MPI_COMM_WORLD) { 
-        this_multi_grid().sync();
+        CudaMPI::sharedState().gridBarrier();
     } else {
         NOT_IMPLEMENTED;
     }

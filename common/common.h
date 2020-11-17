@@ -29,13 +29,50 @@
 
 #define VOLATILE(x) (*((volatile std::remove_reference_t<decltype(x)>*)&(x)))
 
+// Due to coalesced memory access-optimized hardware,
+// it is more efficient to use multiple threads instead of a single thread
+// to make copies.
+__global__ void memcpy_multithreaded(volatile void *dst, volatile void *src, size_t n);
+
+// https://stackoverflow.com/questions/42519766/can-i-check-whether-an-address-is-in-shared-memory
+__forceinline__ __host__ __device__
+int isGlobalMemory(volatile const void *ptr)
+{
+    int result = 1;
+#if __CUDA_ARCH__
+    asm (
+        "{\n"
+        ".reg .pred p;\n"
+        "isspacep.global p, %1;\n"
+        "selp.b32 %0, 1, 0, p;\n"
+        "}\n"
+        : "=r"(result)
+        : "l"(ptr)
+    );
+#endif
+    return result;
+}
+
 __forceinline__
 __host__ __device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n)
 {
-    volatile char *d = (volatile char*) dst;
-    volatile char *s = (volatile char*) src;
-    for (size_t i = 0; i < n; i++) {
-        d[i] = s[i];
+    if (isGlobalMemory(src) && isGlobalMemory(dst)) {
+#if 0
+        // randomly picked numbers, other powers of 2 can work better in some situations
+        size_t block_size = 256; 
+        size_t num_blocks = 256;
+        memcpy_multithreaded<<<block_size, num_blocks>>>(dst, src, n);
+#else
+        cudaMemcpyAsync((void*)dst, (void*)src, n, cudaMemcpyDefault);
+#endif
+        cudaDeviceSynchronize();
+    } else {
+        // inefficient, but works for all cases
+        volatile char *d = (volatile char*) dst;
+        volatile char *s = (volatile char*) src;
+        for (size_t i = 0; i < n; i++) {
+            d[i] = s[i];
+        }
     }
 }
 

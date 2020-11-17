@@ -17,7 +17,7 @@ __global__ void testRunnerKernel(
     CudaMPI::setSharedState(sharedState);
     CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
 
-    int rank = cg::this_grid().thread_rank();
+    int rank = CudaMPI::sharedState().gridRank();
     bool& ok = allOk[rank];
 
     F::run(ok);
@@ -55,7 +55,8 @@ public:
             (void*)&ok
         };
 
-        CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
+        //CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
+        CUDA_CHECK(cudaLaunchKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
         CUDA_CHECK(cudaPeekAtLastError());
         
         std::set<int> unfinishedThreads;

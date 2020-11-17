@@ -2,8 +2,6 @@
 
 #include "mpi.h.cuh"
 
-namespace cg = cooperative_groups;
-
 struct SingleIntKernel {
     static __device__ void run(bool& ok)
     {
@@ -41,7 +39,7 @@ struct TransferArrayKernel {
     static __device__ void run(bool& ok) {
         MPI_Init(nullptr, nullptr);
 
-        if (cg::this_grid().thread_rank() == 0) {
+        if (CudaMPI::sharedState().gridRank() == 0) {
             int x[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
 
             CudaMPI::PendingOperation* op = CudaMPI::isend(1, &x, sizeof(x), 0, 15);
@@ -49,7 +47,7 @@ struct TransferArrayKernel {
             CudaMPI::wait(op);
             
             ok = true;
-        } else if (cg::this_grid().thread_rank() == 1) {
+        } else if (CudaMPI::sharedState().gridRank() == 1) {
             int x[16] = {};
 
             CudaMPI::PendingOperation* op = CudaMPI::irecv(0, &x, sizeof(x), 0, 15);
@@ -78,7 +76,7 @@ struct SendRecvKernel {
     static __device__ void run(bool& ok) {
         MPI_Init(nullptr, nullptr);
         
-        if (cg::this_grid().thread_rank() == 0) {
+        if (CudaMPI::sharedState().gridRank() == 0) {
             int x[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
             int y[16] = {};
 
@@ -91,13 +89,13 @@ struct SendRecvKernel {
             ok = true;
             for (int i = 0; i < 16; i++) {
                 if (y[i] != -i) {
-                    printf("thread %d, y[i] = %d\n", cg::this_grid().thread_rank(), y[i]);
+                    printf("thread %d, y[i] = %d\n", CudaMPI::sharedState().gridRank(), y[i]);
                     ok = false;
                 }
             }
 
             CudaMPI::wait(op[1]);
-        } else if (cg::this_grid().thread_rank() == 1) {
+        } else if (CudaMPI::sharedState().gridRank() == 1) {
             int x[16] = {0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15};
             int y[16] = {};
 
@@ -110,7 +108,7 @@ struct SendRecvKernel {
             ok = true;
             for (int i = 0; i < 16; i++) {
                 if (y[i] != i) {
-                    printf("thread %d, y[i] = %d\n", cg::this_grid().thread_rank(), y[i]);
+                    printf("thread %d, y[i] = %d\n", CudaMPI::sharedState().gridRank(), y[i]);
                     ok = false;
                 }
             }
@@ -134,7 +132,7 @@ struct RepeatSendRecvKernel {
 
         const int numRanks = 2;
         
-        int thisRank = cg::this_grid().thread_rank();
+        int thisRank = CudaMPI::sharedState().gridRank();
         int otherRank = (thisRank + 1) % numRanks;
         
         const int numRepeats = 5;
@@ -182,7 +180,7 @@ struct NetworkFloodKernel {
 
         const int numRanks = 3;
         
-        int thisRank = cg::this_grid().thread_rank();
+        int thisRank = CudaMPI::sharedState().gridRank();
         int nextRank = (thisRank + 1) % numRanks;
         int prevRank = (numRanks + thisRank - 1) % numRanks;
         
@@ -238,7 +236,7 @@ struct AllToAllKernel {
     static __device__ void run(bool& ok) {
         MPI_Init(nullptr, nullptr);
     
-        int thisRank = cg::this_grid().thread_rank();
+        int thisRank = CudaMPI::sharedState().gridRank();
         
         const int numRepeats = 20;
         const int dataSize = 16;

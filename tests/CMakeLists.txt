@@ -4,7 +4,6 @@ project(gpu_mpi_tests LANGUAGES C CXX CUDA)
 
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) # prevents mess with host/device linking of the functions with the same name
 
-# enable cooperative groups (compute capability >= 6.0)
 # enable system-wide atomics: atomicCAS_system (compute capability >= 6.0)
 # It is important to incude multiple compute capabilities, because
 # sometimes managed memory doesn't on newer devices when compiled with old

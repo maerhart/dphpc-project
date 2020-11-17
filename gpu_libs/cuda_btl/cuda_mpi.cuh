@@ -7,17 +7,14 @@
 #include <type_traits>
 
 #include <cuda.h>
-#include <cooperative_groups.h>
 #include <curand_kernel.h>
 
 #include "device_vector.cuh"
-
-namespace cg = cooperative_groups;
-
-
-__device__ void memcpy_volatile(volatile void *dst, volatile void *src, size_t n);
+#include "common.h"
 
 namespace CudaMPI {
+
+
 
 namespace THREAD_LOCALITY {
     enum Type {
@@ -37,8 +34,6 @@ namespace MEMORY_LOCALITY {
         OTHER
     };
 }
-
-namespace cg = cooperative_groups;
 
 struct CircularBufferState {
     __host__ __device__ CircularBufferState(int size)
@@ -486,6 +481,8 @@ private:
         , deviceToHostCommunicator(ctx.deviceToHostQueueSize, ctx.numThreads)
         , freeManagedMemory(ctx.freeMemorySize)
         , returnValue(0)
+        , barrierCounterIn(0)
+        , barrierCounterOut(0)
     {
     }
 
@@ -506,6 +503,55 @@ public:
         SharedState* sharedState;
     };
 
+    __device__ int gridRank() {
+        return threadIdx.x + blockIdx.x * blockDim.x;
+    }
+
+    __device__ int gridSize() {
+        return gridDim.x * blockDim.x;
+    }
+
+    // behaves exactly as this_grid().sync(), but without cooperative group kernel launch
+    __device__ void gridBarrier() {
+
+        // get total number of CUDA blocks
+        // assume that kernels launched only with X dimension
+        int numBlocks = gridDim.x;
+
+        volatile unsigned* volatileCounterIn = &barrierCounterIn;
+        volatile unsigned* volatileCounterOut = &barrierCounterOut;
+
+        // first thread of each block is responsible for
+        // synchronization across blocks
+        if (threadIdx.x == 0) {
+            // wait other threads to exit from previous barrier invocation
+            while (*volatileCounterOut != 0) {}
+
+            unsigned oldIn = atomicAdd_system(&barrierCounterIn, 1);
+
+            // if we are last thread, reset out counter
+            // and allow threads to pass barrier entry 
+            if (oldIn == numBlocks - 1) {
+                *volatileCounterOut = numBlocks + 1;
+                __threadfence_system();
+                *volatileCounterIn += 1; // increase second time to numBlocks + 1
+            }
+            
+            // barrier entry
+            while (*volatileCounterIn != numBlocks + 1) {} 
+
+            // if we are here, then all threads started exitting from barrier
+            unsigned oldOut = atomicSub_system(&barrierCounterOut, 1);
+            if (oldOut == 2) {
+                *volatileCounterIn = 0;
+                __threadfence_system();
+                *volatileCounterOut -= 1; // decrease second time to 0
+            }
+        }
+
+        __syncthreads(); // synchronize threads of the block
+    }
+
     ManagedVector<SharedThreadState> sharedThreadState;
     SharedFragmentBuffer sharedFragmentBuffer;
 
@@ -514,6 +560,9 @@ public:
     FreeManagedMemory freeManagedMemory;
 
     int returnValue;
+
+    unsigned barrierCounterIn;
+    unsigned barrierCounterOut;
 };
 
 __device__ SharedState& sharedState();

@@ -12,7 +12,7 @@ struct CommunicatorTest {
         
         MPI_CHECK_DEVICE(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
         
-        ok = (rank == cg::this_grid().thread_rank());
+        ok = (rank == CudaMPI::sharedState().gridRank());
         
         MPI_CHECK_DEVICE(MPI_Finalize());
         

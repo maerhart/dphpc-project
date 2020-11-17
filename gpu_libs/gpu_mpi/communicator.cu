@@ -3,9 +3,6 @@
 #include "mpi_common.cuh"
 #include "group.cuh"
 
-#include <cooperative_groups.h>
-using namespace cooperative_groups;
-
 #include "cuda_mpi.cuh"
 
 #include "mpi.cuh"
@@ -53,20 +50,20 @@ __device__ int getCommContext(MPI_Comm comm) {
 };
 
 __device__ void initializeGlobalCommunicators() {
-    if (this_grid().thread_rank() == 0) {
+    if (CudaMPI::sharedState().gridRank() == 0) {
         MPI_COMM_NULL = new MPI_Comm_impl(0, MPI_GROUP_EMPTY);
         
         MPI_COMM_WORLD = new MPI_Comm_impl(1, MPI_GROUP_WORLD);
         
     }
-    this_grid().sync();
+    CudaMPI::sharedState().gridBarrier();
 
     CudaMPI::threadPrivateState().unusedCommunicationContext = 2;
 }
 
 __device__ void destroyGlobalCommunicators() {
-    this_grid().sync();
-    if (this_grid().thread_rank() == 0) {
+    CudaMPI::sharedState().gridBarrier();
+    if (CudaMPI::sharedState().gridRank() == 0) {
         delete MPI_COMM_NULL;
         delete MPI_COMM_WORLD;
     }
