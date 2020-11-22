@@ -197,8 +197,26 @@ __device__ void finishBenchmark(SharedState* ss) {
     while (ss->cpuReady) {}
 }
 
-__device__ void compute_latency_and_throughput(int n, const double* x, const double* y, double* a, double* b) {
-    
+void compute_latency_and_throughput(int n, const double* x, const double* y, double& a, double& b) {
+    double meanX = 0;
+    double meanY = 0;
+    for (int i = 0; i < n; i++) {
+        meanX += x[i];
+        meanY += y[i];
+    }
+    meanX /= n;
+    meanY /= n;
+
+    double covXY = 0;
+    double varX = 0;
+    for (int i = 0; i < n; i++) {
+        double dx = x[i] - meanX;
+        double dy = y[i] - meanY;
+        covXY += dx * dy;
+        varX += dx * dx;
+    }
+    a = covXY / varX;
+    b = meanY - a * meanX;
 }
 
 __global__ void benchmarkKernel(SharedState* ss) {
@@ -488,15 +506,20 @@ int main() {
         // print benchmark results
 
         int dataSizes[measurements];
+        double floatDataSizes[measurements];
         for (int i = 0; i < measurements; i++) {
             dataSizes[i] = 1 << (i + 1); // +1 due to two operations: send + recv
+            floatDataSizes[i] = dataSizes[i];
         }
 
         for (int j = 0; j < numBenchmarks; j++) {
-            for (int i = 0; i < measurements; i++) {
-                printf("benchmark %s, dataSize %d, value %lg, bandwidth %lg\n", benchmarkName[j], dataSizes[i], ss->times[j][i], dataSizes[i] / ss->times[j][i]);
-            }
-
+            //for (int i = 0; i < measurements; i++) {
+            //    printf("benchmark %s, dataSize %d, value %lg, bandwidth %lg\n", benchmarkName[j], dataSizes[i], ss->times[j][i], dataSizes[i] / ss->times[j][i]);
+            //}
+            double invThroughput, latency;
+            compute_latency_and_throughput(measurements, floatDataSizes, ss->times[j], invThroughput, latency);
+            double throughput = 1. / invThroughput;
+            printf("benchmark %s latency %lg us throughput %lg GB/s\n", benchmarkName[j], latency * 1e6, throughput / 1e9);
         }
 
         printf("=== benchmark ===\n");
