@@ -24,7 +24,7 @@ __global__ void copyKernel(void* dst, void* src, size_t size) {
     }
 }
 
-static const int measurements = 23; // 8 MB
+static const int measurements = 23; 
 const size_t maxBufferSize = 1 << measurements; 
 const int numBenchmarks = 5;
 const char* benchmarkName[5] = {
@@ -34,9 +34,22 @@ const char* benchmarkName[5] = {
     "device_issues_tranfer_memcpy",
     "device_issues_tranfer_copy_kernel"
 };
+const double interval = 0.1;
+const int clockWarmup = 10;
+const double minMeasurementTime = 0.1;
+const int stages = 2;
+
 
 cudaStream_t hostCopyStream;
 cudaStream_t benchmarkStream;
+
+__forceinline__ __host__ __device__ void memfence() {
+    #if __CUDA_ARCH__
+        __threadfence_system();
+    #else
+        __sync_synchronize();
+    #endif
+}
 
 struct SharedState {
     SharedState() {
@@ -45,11 +58,15 @@ struct SharedState {
 
         CHECK(cudaMemset(buffer1, 0, maxBufferSize));
         CHECK(cudaMemset(buffer2, 0, maxBufferSize));
+
+        for (int b = 0; b < numBenchmarks; b++) {
+            for (int m = 0; m < measurements; m++) {
+                repetitions[b][m] = 1;
+            }
+        }
     }
 
     // clock rate related 
-    const int warmup = 10;
-    const float interval = 0.1;
     bool clockMeasurementGPUReady = false;
     bool clockMeasurementCPUReady = false;
     long long clocksPerSecond = -1;
@@ -71,47 +88,57 @@ struct SharedState {
     void* volatile recvPtr = nullptr;
     volatile size_t transferSize = 0;
 
+    volatile bool sendCompleted = false;
+    volatile bool recvCompleted = false;
+
     double times[numBenchmarks][measurements];
+    int repetitions[numBenchmarks][measurements];
     
+    __device__ int size() {
+        return blockDim.x * gridDim.x;
+    }
+
     __device__ int rank() {
         return threadIdx.x + blockDim.x * blockIdx.x;
     }
 
     __device__ void send(void* buf, size_t size) {
-        __threadfence_system();
-        while (sendPtr) {}
+        while (sendCompleted || recvCompleted) {}
+        if (sendPtr) {
+            printf("ERROR send\n");
+        }
         sendPtr = buf;
         transferSize = size;
     }
 
     __device__ void recv(void* buf, size_t size) {
-        __threadfence_system();
-        while (recvPtr) {}
+        while (recvCompleted || sendCompleted) {}
+        if (recvPtr) {
+            printf("ERROR recv\n");
+        }
         recvPtr = buf;
         transferSize = size;
     }
 
-    __host__ __device__ void waitTransferFinish() {
-#if __CUDA_ARCH__
-        __threadfence_system();
-#else
-        __sync_synchronize();
-#endif
-        while (sendPtr || recvPtr) {}
+    __host__ __device__ void waitSendFinish() {
+        while (!sendCompleted) {}
+        sendCompleted = false;
+    }
+
+    __host__ __device__ void waitRecvFinish() {
+        while (!recvCompleted) {}
+        recvCompleted = false;
     }
 
     __host__ __device__ void waitTransferArguments() {
-#if __CUDA_ARCH__
-        __threadfence_system();
-#else
-        __sync_synchronize();
-#endif
-        while (!sendPtr || !recvPtr) {}
+        while (!(sendPtr && recvPtr)) {}
     }
 
     __host__ __device__ void finishTransfer() {
         sendPtr = nullptr;
         recvPtr = nullptr;
+        sendCompleted = true;
+        recvCompleted = true;
     }
 
     __device__ void deviceSequentialTransfer() {
@@ -144,60 +171,125 @@ struct SharedState {
         finishTransfer();
     }
 
+    // *** barrier between host and single device thread ***
+
+    volatile bool hostBarrierReady = 0;
+    volatile bool deviceBarrierReady = 0;
+
+    __device__ void syncWithHost() {
+        while (deviceBarrierReady) {} // wait previous entry
+        deviceBarrierReady = true;
+        while (!hostBarrierReady) {}
+        hostBarrierReady = false;
+    }
+
+    void syncWithDeviceThread() {
+        while (hostBarrierReady) {} // wait previous entry
+        hostBarrierReady = true;
+        while (!deviceBarrierReady) {}
+        deviceBarrierReady = false;
+    }
+
+    // *** barrier between first threads of all blocks ***
+
+    unsigned bi = 0;
+    unsigned bo = 0;
+
+    __device__ void syncBlocksMasters() {
+        int numBlocks = gridDim.x;
+
+        volatile unsigned* vbi = &bi;
+        volatile unsigned* vbo = &bo;
+
+        if (threadIdx.x == 0) {
+            // wait other threads to exit from previous barrier invocation
+            while (*vbo != 0) {}
+
+            unsigned oldIn = atomicAdd_system(&bi, 1);
+
+            // if we are last thread, reset out counter
+            // and allow threads to pass barrier entry 
+            if (oldIn == numBlocks - 1) {
+                *vbo = numBlocks + 1;
+                //memfence();
+                *vbi += 1; // increase second time to numBlocks + 1
+                //memfence();
+            }
+            
+            // barrier entry
+            while (*vbi != numBlocks + 1) {} 
+
+            // if we are here, then all threads started exitting from barrier
+            unsigned oldOut = atomicSub_system(&bo, 1);
+            if (oldOut == 2) {
+                *vbi = 0;
+                //memfence();
+                *vbo -= 1; // decrease second time to 0
+                //memfence();
+            }
+        }
+    }
+
+    // barrier between all threads on device
+    __device__ void deviceBarrier() {
+        // Since synchtreads is not enough for correct barrier: 
+        // one should be in the beginning and one at the end/
+        __syncthreads();
+        syncBlocksMasters();
+        __syncthreads();
+    }
+
+    // barrier between all threads on device and host thread
+    __host__ __device__ void hostDeviceBarrier() {
+#ifdef __CUDA_ARCH__
+        __syncthreads();
+        if (rank() == 0) syncWithHost();
+        syncBlocksMasters();
+        if (rank() == 0) syncWithHost();
+        __syncthreads();
+#else
+        // twice, it is not a bug!
+        syncWithDeviceThread();
+        syncWithDeviceThread();
+#endif
+    }
+
 };
 
 __global__ void clockMeasurementKernel(SharedState* ss) {
     volatile bool& cpuReady = ss->clockMeasurementCPUReady;
     volatile bool& gpuReady = ss->clockMeasurementGPUReady;
 
-    for (int i = 0; i < ss->warmup; i++) {
-        gpuReady = true;
-        __threadfence_system();
+    for (int i = 0; i < clockWarmup; i++) {
+        memfence();
         while (!cpuReady) {}
+        gpuReady = true;
         long long t1 = clock64();
-        __threadfence_system();
+        memfence();
         while (cpuReady) {}
         long long t2 = clock64();
         gpuReady = false;
 
-        printf("%d clocks per %lg seconds\n", t2 - t1, ss->interval);
-        ss->clocksPerSecond = (t2 - t1) / ss->interval; // use value from last iteration
+        printf("%lld clocks per %lg seconds\n", t2 - t1, interval);
+        ss->clocksPerSecond = (t2 - t1) / interval; // use value from last iteration
     }
 }
 
 __global__ void checkClockRateCalibration(SharedState* ss) {
     // check clock rate calibration
     long long t1 = clock64();
-    __threadfence_system();
-    while (ss->dt(t1, clock64()) < ss->interval) {}
+    while (ss->dt(t1, clock64()) < interval) {}
     long long t2 = clock64();
     double dt = ss->dt(t1, t2);
     printf("dt on GPU = %lg s\n", dt);
 }
 
-__device__ void startBenchmark(SharedState* ss) {
-    if (ss->rank() == 0) {
-        ss->thread1ready = true;
-    } else {
-        ss->thread2ready = true;
-    }
-
-    __threadfence_system();
-    while (!ss->cpuReady) {}
-}
-
-__device__ void finishBenchmark(SharedState* ss) {
-    if (ss->rank() == 0) {
-        ss->thread1ready = false;
-    } else {
-        ss->thread2ready = false;
-    }
-
-    __threadfence_system();
-    while (ss->cpuReady) {}
-}
-
-void compute_latency_and_throughput(int n, const double* x, const double* y, double& a, double& b) {
+// https://en.wikipedia.org/wiki/Ordinary_least_squares#Simple_linear_regression_model
+void leastSquares(int n, const double* x, const double* y, double& a, double& b) {
+    //printf("+++ simple linear regression +++\n");
+    //for (int i = 0; i < n; i++) {
+    //    printf("x[%d] = %lg y[%d] = %lg\n", i, x[i], i, y[i]);
+    //}
     double meanX = 0;
     double meanY = 0;
     for (int i = 0; i < n; i++) {
@@ -206,6 +298,10 @@ void compute_latency_and_throughput(int n, const double* x, const double* y, dou
     }
     meanX /= n;
     meanY /= n;
+    // hack: force least squares to consider impact of the first point more 
+    // it is required due to exponential growth of data points x
+    meanX = x[0];
+    meanY = y[0];
 
     double covXY = 0;
     double varX = 0;
@@ -217,178 +313,270 @@ void compute_latency_and_throughput(int n, const double* x, const double* y, dou
     }
     a = covXY / varX;
     b = meanY - a * meanX;
+    //printf("meanX = %lg\n", meanX);
+    //printf("meanY = %lg\n", meanY);
+    //printf("a = %lg\n", a);
+    //printf("b = %lg\n", b);
+    //printf("=== simple linear regression ===\n");
 }
 
 __global__ void benchmarkKernel(SharedState* ss) {
     int rank = ss->rank();
     double times[measurements];
+    int benchmark = 0;
 
     // benchmark 1: sender issues transfer
-    startBenchmark(ss);   
+    for (int stage = 0; stage < stages; stage++) {
+        //printf("rank = %d stage = %d\n", rank, stage);
+        //printf("rank = %d stage = %d repetitions[0] = %d\n", rank, stage, ss->repetitions[benchmark][0]);
+        //volatile int* vreps = &(ss->repetitions[benchmark][0]);
+        //printf("rank = %d stage = %d volatile repetitions[0] = %d\n", rank, stage, *vreps);
 
-    for (int m = 0; m < measurements; m++) {
-        size_t bufferSize = 1 << m;
-        long long t1 = clock64();
-        if (rank == 0) {
-            ss->send(ss->buffer1, bufferSize);
-            ss->deviceSequentialTransfer();
+        //long long t1 = clock64();
+        //while (clock64() - t1 < 2000000000) {}
+        //printf("rank = %d stage = %d repetitions[0] = %d\n", rank, stage, ss->repetitions[benchmark][0]);
+        //printf("rank = %d stage = %d volatile repetitions[0] = %d\n", rank, stage, *vreps);
 
-            ss->recv(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
-        } else if (rank == 1) {
-            ss->recv(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+        for (int m = 0; m < measurements; m++) {
+            size_t bufferSize = 1 << m;
+            int repeats = ss->repetitions[benchmark][m];
+            int warmup = repeats / 10 + 1;
+            long long t1 = 0;
+            //printf("rank = %d benchmark %d repetitions %d bufferSize %d\n", rank, benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize));
+            for (int r = 0; r < warmup + repeats; r++) { 
+                if (r == warmup) {
+                    t1 = clock64(); // start measurement
+                }
+                if (rank == 0) {
+                    ss->send(ss->buffer1, bufferSize);
+                    ss->deviceSequentialTransfer();
+                    ss->waitSendFinish();
 
-            ss->send(ss->buffer2, bufferSize);
-            ss->deviceSequentialTransfer();
+                    ss->recv(ss->buffer1, bufferSize);
+                    ss->waitRecvFinish();
+                } else if (rank == 1) {
+                    ss->recv(ss->buffer2, bufferSize);
+                    ss->waitRecvFinish();
+
+                    ss->send(ss->buffer2, bufferSize);
+                    ss->deviceSequentialTransfer();
+                    ss->waitSendFinish();
+                }
+            }
+            long long t2 = clock64();
+            times[m] = ss->dt(t1, t2) / repeats;
+            if (rank == 0) {
+                //printf("rank = %d benchmark %d repetitions %d bufferSize %d time %f bw %f\n", rank, benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+                printf("benchmark %d repetitions %d bufferSize %d time %f bw %f\n", benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+            }
         }
-        long long t2 = clock64();
-        times[m] = ss->dt(t1, t2);
-        //if (rank == 0) {
-        //    printf("sender_issues_tranfer bufferSize = %d, time = %f, bw = %f\n", bufferSize, times[m], bufferSize / times[m]);
-        //}
+
+        ss->hostDeviceBarrier();
+
+        // copy measurements to the host
+        if (rank == 0) {
+            memcpy(ss->times[benchmark], times, sizeof(double) * measurements);
+        }
+
+        ss->hostDeviceBarrier();
+        // wait host to update number of repetitions
+        ss->hostDeviceBarrier();
     }
 
-    // copy measurements to the host
-    if (rank == 0) {
-        memcpy(ss->times[0], times, sizeof(double) * measurements);
-    }
-
-    finishBenchmark(ss);
+    benchmark += 1;
 
     // benchmark 2: host issues transfer with memcpy
 
-    startBenchmark(ss);
+    for (int stage = 0; stage < stages; stage++) {
 
-    for (int m = 0; m < measurements; m++) {
-        size_t bufferSize = 1 << m;
-        long long t1 = clock64();
-        if (rank == 0) {
-            ss->send(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
+        for (int m = 0; m < measurements; m++) {
+            size_t bufferSize = 1 << m;
+            int repeats = ss->repetitions[benchmark][m];
+            int warmup = repeats / 10 + 1;
+            long long t1 = 0;
+            for (int r = 0; r < warmup + repeats; r++) { 
+                if (r == warmup) {
+                    t1 = clock64(); // start measurement
+                }
+                if (rank == 0) {
+                    ss->send(ss->buffer1, bufferSize);
+                    ss->waitSendFinish();
 
-            ss->recv(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
-        } else if (rank == 1) {
-            ss->recv(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+                    ss->recv(ss->buffer1, bufferSize);
+                    ss->waitRecvFinish();
+                } else if (rank == 1) {
+                    ss->recv(ss->buffer2, bufferSize);
+                    ss->waitRecvFinish();
 
-            ss->send(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+                    ss->send(ss->buffer2, bufferSize);
+                    ss->waitSendFinish();
+                }
+            }
+            long long t2 = clock64();
+            times[m] = ss->dt(t1, t2) / repeats;
+            if (rank == 0) {
+                printf("benchmark %d repetitions %d bufferSize %d time %f bw %f\n", benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+            }
         }
-        long long t2 = clock64();
-        times[m] = ss->dt(t1, t2);
-        //if (rank == 0) {
-        //    printf("host_issues_tranfer_memcpy bufferSize = %d, time = %f, bw = %f\n", bufferSize, times[m], bufferSize / times[m]);
-        //}
+
+        ss->hostDeviceBarrier();
+
+        // copy measurements to the host
+        if (rank == 0) {
+            memcpy(ss->times[benchmark], times, sizeof(double) * measurements);
+        }
+
+        ss->hostDeviceBarrier();
+        // wait host to update number of repetitions
+        ss->hostDeviceBarrier();
     }
 
-    // copy measurements to the host
-    if (rank == 0) {
-        memcpy(ss->times[1], times, sizeof(double) * measurements);
-    }
 
-    finishBenchmark(ss);
+    //printf("Device wants to start benchmark 2\n");
+
+    benchmark += 1;
 
     // benchmark 3: host issues transfer copy kernel
 
-    startBenchmark(ss);
+    for (int stage = 0; stage < stages; stage++) {
 
-    for (int m = 0; m < measurements; m++) {
-        size_t bufferSize = 1 << m;
-        long long t1 = clock64();
-        if (rank == 0) {
-            ss->send(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
+        for (int m = 0; m < measurements; m++) {
+            size_t bufferSize = 1 << m;
+            int repeats = ss->repetitions[benchmark][m];
+            int warmup = repeats / 10 + 1;
+            long long t1 = 0;
+            for (int r = 0; r < warmup + repeats; r++) { 
+                if (r == warmup) {
+                    t1 = clock64(); // start measurement
+                }
+                if (rank == 0) {
+                    ss->send(ss->buffer1, bufferSize);
+                    ss->waitSendFinish();
 
-            ss->recv(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
-        } else if (rank == 1) {
-            ss->recv(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+                    ss->recv(ss->buffer1, bufferSize);
+                    ss->waitRecvFinish();
+                } else if (rank == 1) {
+                    ss->recv(ss->buffer2, bufferSize);
+                    ss->waitRecvFinish();
 
-            ss->send(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+                    ss->send(ss->buffer2, bufferSize);
+                    ss->waitSendFinish();
+                }
+            }
+            long long t2 = clock64();
+            times[m] = ss->dt(t1, t2) / repeats;
+            if (rank == 0) {
+                printf("benchmark %d repetitions %d bufferSize %d time %f bw %f\n", benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+            }
         }
-        long long t2 = clock64();
-        times[m] = ss->dt(t1, t2);
-        //if (rank == 0) {
-        //    printf("host_issues_tranfer_copy_kernel bufferSize = %d, time = %f, bw = %f\n", bufferSize, times[m], bufferSize / times[m]);
-        //}
+        ss->hostDeviceBarrier();
+
+        // copy measurements to the host
+        if (rank == 0) {
+            memcpy(ss->times[benchmark], times, sizeof(double) * measurements);
+        }
+
+        ss->hostDeviceBarrier();
+        // wait host to update number of repetitions
+        ss->hostDeviceBarrier();
     }
 
-    // copy measurements to the host
-    if (rank == 0) {
-        memcpy(ss->times[2], times, sizeof(double) * measurements);
-    }
-
-    finishBenchmark(ss);
+    benchmark += 1;
 
     // benchmark 4: device issues transfer memcpy
-    startBenchmark(ss);
+    for (int stage = 0; stage < stages; stage++) {
+        for (int m = 0; m < measurements; m++) {
+            size_t bufferSize = 1 << m;
+            int repeats = ss->repetitions[benchmark][m];
+            int warmup = repeats / 10 + 1;
+            long long t1 = 0;
+            for (int r = 0; r < warmup + repeats; r++) { 
+                if (r == warmup) {
+                    t1 = clock64(); // start measurement
+                }
+                if (rank == 0) {
+                    ss->send(ss->buffer1, bufferSize);
+                    ss->memcpyTransfer();
+                    ss->waitSendFinish();
 
-    for (int m = 0; m < measurements; m++) {
-        size_t bufferSize = 1 << m;
-        long long t1 = clock64();
-        if (rank == 0) {
-            ss->send(ss->buffer1, bufferSize);
-            ss->memcpyTransfer();
+                    ss->recv(ss->buffer1, bufferSize);
+                    ss->waitRecvFinish();
+                } else if (rank == 1) {
+                    ss->recv(ss->buffer2, bufferSize);
+                    ss->waitRecvFinish();
 
-            ss->recv(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
-        } else if (rank == 1) {
-            ss->recv(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
-
-            ss->send(ss->buffer2, bufferSize);
-            ss->memcpyTransfer();
+                    ss->send(ss->buffer2, bufferSize);
+                    ss->memcpyTransfer();
+                    ss->waitSendFinish();
+                }
+            }
+            long long t2 = clock64();
+            times[m] = ss->dt(t1, t2) / repeats;
+            if (rank == 0) {
+                printf("benchmark %d repetitions %d bufferSize %d time %f bw %f\n", benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+            }
         }
-        long long t2 = clock64();
-        times[m] = ss->dt(t1, t2);
-        //if (rank == 0) {
-        //    printf("device_issues_tranfer_memcpy bufferSize = %d, time = %f, bw = %f\n", bufferSize, times[m], bufferSize / times[m]);
-        //}
+        ss->hostDeviceBarrier();
+
+        // copy measurements to the host
+        if (rank == 0) {
+            memcpy(ss->times[benchmark], times, sizeof(double) * measurements);
+        }
+
+        ss->hostDeviceBarrier();
+        // wait host to update number of repetitions
+        ss->hostDeviceBarrier();
     }
 
-    // copy measurements to the host
-    if (rank == 0) {
-        memcpy(ss->times[3], times, sizeof(double) * measurements);
-    }
-
-    finishBenchmark(ss);
+    benchmark += 1;
 
     // benchmark 5: device issues transfer copy kernel
-    startBenchmark(ss);
+    for (int stage = 0; stage < stages; stage++) {
 
-    for (int m = 0; m < measurements; m++) {
-        size_t bufferSize = 1 << m;
-        long long t1 = clock64();
-        if (rank == 0) {
-            ss->send(ss->buffer1, bufferSize);
-            ss->copyKernelTransfer();
+        for (int m = 0; m < measurements; m++) {
+            size_t bufferSize = 1 << m;
+            int repeats = ss->repetitions[benchmark][m];
+            int warmup = repeats / 10 + 1;
+            long long t1 = 0;
+            for (int r = 0; r < warmup + repeats; r++) { 
+                if (r == warmup) {
+                    t1 = clock64(); // start measurement
+                }
+                if (rank == 0) {
+                    ss->send(ss->buffer1, bufferSize);
+                    ss->copyKernelTransfer();
+                    ss->waitSendFinish();
 
-            ss->recv(ss->buffer1, bufferSize);
-            ss->waitTransferFinish();
-        } else if (rank == 1) {
-            ss->recv(ss->buffer2, bufferSize);
-            ss->waitTransferFinish();
+                    ss->recv(ss->buffer1, bufferSize);
+                    ss->waitRecvFinish();
+                } else if (rank == 1) {
+                    ss->recv(ss->buffer2, bufferSize);
+                    ss->waitRecvFinish();
 
-            ss->send(ss->buffer2, bufferSize);
-            ss->copyKernelTransfer();
+                    ss->send(ss->buffer2, bufferSize);
+                    ss->copyKernelTransfer();
+                    ss->waitSendFinish();
+                }
+            }
+            long long t2 = clock64();
+            times[m] = ss->dt(t1, t2) / repeats;
+            if (rank == 0) {
+                printf("benchmark %d repetitions %d bufferSize %d time %f bw %f\n", benchmark, int(ss->repetitions[benchmark][m]), int(bufferSize), times[m], bufferSize / times[m]);
+            }
         }
-        long long t2 = clock64();
-        times[m] = ss->dt(t1, t2);
-        //if (rank == 0) {
-        //    printf("device_issues_tranfer_copy_kernel bufferSize = %d, time = %f, bw = %f\n", bufferSize, times[m], bufferSize / times[m]);
-        //}
+        ss->hostDeviceBarrier();
+
+        // copy measurements to the host
+        if (rank == 0) {
+            memcpy(ss->times[benchmark], times, sizeof(double) * measurements);
+        }
+
+        ss->hostDeviceBarrier();
+        // wait host to update number of repetitions
+        ss->hostDeviceBarrier();
     }
 
-    // copy measurements to the host
-    if (rank == 0) {
-        memcpy(ss->times[4], times, sizeof(double) * measurements);
-    }
-
-    finishBenchmark(ss);
+    benchmark += 1;
 }
 
 using hrclock = std::chrono::high_resolution_clock;
@@ -398,22 +586,12 @@ auto nanoseconds(T x) {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(x);
 }
 
-void hostStartBenchmark(SharedState* ss) {
-    __sync_synchronize();
-    while (!ss->thread1ready || !ss->thread2ready) {}
-    ss->cpuReady = true;
-}
-void hostFinishBenchmark(SharedState* ss) {
-    __sync_synchronize();
-    while (ss->thread1ready || ss->thread2ready) {}
-    ss->cpuReady = false;
-}
-
 int main() {
     SharedState* ss = nullptr;
     CHECK(cudaMallocManaged(&ss, sizeof(SharedState)));
     ss = new (ss) SharedState;
 
+    CHECK(cudaDeviceSynchronize());
     // this is highly unreliable, use measurement approach instead
     //CHECK(cudaDeviceGetAttribute(&ss->peakClkKHz, cudaDevAttrClockRate, /*device = */0)); 
 
@@ -428,16 +606,17 @@ int main() {
         clockMeasurementKernel<<<1,1>>>(ss);
         CHECK(cudaPeekAtLastError());
 
-        for (int i = 0; i < ss->warmup; i++) {
-            __sync_synchronize();
-            while (!gpuReady) {} // wait GPU to start
-            auto t1 = hrclock::now();
+        for (int i = 0; i < clockWarmup; i++) {
             cpuReady = true;
-            __sync_synchronize();
-            while (nanoseconds(hrclock::now() - t1).count() / 1e9 < ss->interval) {}
+            memfence();
+            while (!gpuReady) {} 
+            memfence();
+            auto t1 = hrclock::now();
+            while (nanoseconds(hrclock::now() - t1).count() / 1e9 < interval) {}
+            memfence();
             cpuReady = false;
-            __sync_synchronize();
-            while (gpuReady) {} // wait GPU to finish
+            memfence();
+            while (gpuReady) {}
         }
 
         CHECK(cudaDeviceSynchronize());
@@ -465,41 +644,113 @@ int main() {
         benchmarkKernel<<<2, 1, 0, benchmarkStream>>>(ss);
         CHECK(cudaPeekAtLastError());
 
-        {
-            hostStartBenchmark(ss);
-            // host doesn't participate
-            hostFinishBenchmark(ss);
-        }
+        int benchmark = 0;
 
-        {
-            hostStartBenchmark(ss);
+        for (int stage = 0; stage < stages; stage++) {
+            // host doesn't participate
+            ss->hostDeviceBarrier();
+            ss->hostDeviceBarrier();
+
+            // adjust number of repetitions
             for (int m = 0; m < measurements; m++) {
-                ss->memcpyTransfer();
-                ss->memcpyTransfer();
+                double time = ss->times[benchmark][m];
+                //time = 0.011;
+                ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
+                //printf("masurement %d time %lg repetitions %d\n", m, time, ss->repetitions[benchmark][m]);
             }
-            hostFinishBenchmark(ss);
+            memfence();
+
+            ss->hostDeviceBarrier();
         }
 
-        {
-            hostStartBenchmark(ss);
+        benchmark += 1;
+
+        for (int stage = 0; stage < stages; stage++) {
             for (int m = 0; m < measurements; m++) {
-                ss->memcpyTransfer();
-                ss->memcpyTransfer();
+                int repeats = ss->repetitions[benchmark][m];
+                int warmup = repeats / 10 + 1;
+                for (int r = 0; r < warmup + repeats; r++) { 
+                    ss->memcpyTransfer();
+                    ss->memcpyTransfer();
+                }
             }
-            hostFinishBenchmark(ss);
+
+            ss->hostDeviceBarrier();
+            ss->hostDeviceBarrier();
+
+            // adjust number of repetitions
+            for (int m = 0; m < measurements; m++) {
+                double time = ss->times[benchmark][m];
+                //time = 0.011;
+                ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
+                //printf("masurement %d time %lg repetitions %d\n", m, time, ss->repetitions[benchmark][m]);
+            }
+
+            ss->hostDeviceBarrier();
         }
 
-        {
-            hostStartBenchmark(ss);
-            // host doesn't participate
-            hostFinishBenchmark(ss);
+        //printf("Host wants to start benchmark 2\n");
+        benchmark += 1;
+
+        for (int stage = 0; stage < stages; stage++) {
+            for (int m = 0; m < measurements; m++) {
+                int repeats = ss->repetitions[benchmark][m];
+                int warmup = repeats / 10 + 1;
+                for (int r = 0; r < warmup + repeats; r++) { 
+                    ss->copyKernelTransfer();
+                    ss->copyKernelTransfer();
+                }
+            }
+
+            ss->hostDeviceBarrier();
+            ss->hostDeviceBarrier();
+
+            // adjust number of repetitions
+            for (int m = 0; m < measurements; m++) {
+                double time = ss->times[benchmark][m];
+                //time = 0.011;
+                ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
+                //printf("masurement %d time %lg repetitions %d\n", m, time, ss->repetitions[benchmark][m]);
+            }
+
+            ss->hostDeviceBarrier();
         }
 
-        {
-            hostStartBenchmark(ss);
+        benchmark += 1;
+
+        for (int stage = 0; stage < stages; stage++) {
             // host doesn't participate
-            hostFinishBenchmark(ss);
+            ss->hostDeviceBarrier();
+            ss->hostDeviceBarrier();
+
+            // adjust number of repetitions
+            for (int m = 0; m < measurements; m++) {
+                double time = ss->times[benchmark][m];
+                //time = 0.011;
+                ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
+            }
+
+            ss->hostDeviceBarrier();
         }
+
+        benchmark += 1;
+
+        for (int stage = 0; stage < stages; stage++) {
+            // host doesn't participate
+            ss->hostDeviceBarrier();
+            ss->hostDeviceBarrier();
+
+            // adjust number of repetitions
+            for (int m = 0; m < measurements; m++) {
+                double time = ss->times[benchmark][m];
+                //time = 0.011;
+                ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
+            }
+
+            ss->hostDeviceBarrier();
+        }
+
+        benchmark += 1;
 
         CHECK(cudaStreamSynchronize(benchmarkStream));
 
@@ -517,7 +768,7 @@ int main() {
             //    printf("benchmark %s, dataSize %d, value %lg, bandwidth %lg\n", benchmarkName[j], dataSizes[i], ss->times[j][i], dataSizes[i] / ss->times[j][i]);
             //}
             double invThroughput, latency;
-            compute_latency_and_throughput(measurements, floatDataSizes, ss->times[j], invThroughput, latency);
+            leastSquares(measurements, floatDataSizes, ss->times[j], invThroughput, latency);
             double throughput = 1. / invThroughput;
             printf("benchmark %s latency %lg us throughput %lg GB/s\n", benchmarkName[j], latency * 1e6, throughput / 1e9);
         }
