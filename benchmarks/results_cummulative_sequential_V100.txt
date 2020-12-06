@@ -1,0 +1,57 @@
+nvcc -O3 -arch sm_70 -rdc true single_gpu_cummulative.cu && ./a.out       
+Max active blocks per multiprocessor (sequential transfer kernel) 20
+Number of multiprocessors 80, total blocks 1600, total threads 1600
+*** Start benchmark sequential device transfers ***
+bufferSize 1 repetitions 1 measuredClocks 38518
+bufferSize 1 repetitions 2597 measuredClocks 16448
+bufferSize 2 repetitions 1 measuredClocks 37872
+bufferSize 2 repetitions 2641 measuredClocks 17463
+bufferSize 4 repetitions 1 measuredClocks 38527
+bufferSize 4 repetitions 2596 measuredClocks 20225
+bufferSize 8 repetitions 1 measuredClocks 45247
+bufferSize 8 repetitions 2211 measuredClocks 24434
+bufferSize 16 repetitions 1 measuredClocks 50149
+bufferSize 16 repetitions 1995 measuredClocks 29701
+bufferSize 32 repetitions 1 measuredClocks 60245
+bufferSize 32 repetitions 1660 measuredClocks 40228
+bufferSize 64 repetitions 1 measuredClocks 75821
+bufferSize 64 repetitions 1319 measuredClocks 57287
+bufferSize 128 repetitions 1 measuredClocks 109217
+bufferSize 128 repetitions 916 measuredClocks 91070
+bufferSize 256 repetitions 1 measuredClocks 176457
+bufferSize 256 repetitions 567 measuredClocks 161182
+bufferSize 512 repetitions 1 measuredClocks 322420
+bufferSize 512 repetitions 311 measuredClocks 301876
+bufferSize 1024 repetitions 1 measuredClocks 614332
+bufferSize 1024 repetitions 163 measuredClocks 599376
+bufferSize 2048 repetitions 1 measuredClocks 1197575
+bufferSize 2048 repetitions 84 measuredClocks 1178275
+bufferSize 4096 repetitions 1 measuredClocks 2363962
+bufferSize 4096 repetitions 43 measuredClocks 2340228
+bufferSize 8192 repetitions 1 measuredClocks 4683170
+bufferSize 8192 repetitions 22 measuredClocks 4662177
+bufferSize 16384 repetitions 1 measuredClocks 9318223
+bufferSize 16384 repetitions 11 measuredClocks 9305110
+bufferSize 32768 repetitions 1 measuredClocks 18597080
+bufferSize 32768 repetitions 6 measuredClocks 18584057
+bufferSize 65536 repetitions 1 measuredClocks 37166329
+bufferSize 65536 repetitions 3 measuredClocks 37159027
+Total benchmark 1 time 1.09379 s, GPU clock ticks 1477021103
+GPU clock rate 1.35037 GHz
+sequentialDeviceTransfer bytes 2 reps 6080 clocks 16448 time 1.21804e-05 s bw_pair 0.000164199 GB/s bw_all 0.131359 GB/s
+sequentialDeviceTransfer bytes 4 reps 5727 clocks 17463 time 1.2932e-05 s bw_pair 0.00030931 GB/s bw_all 0.247448 GB/s
+sequentialDeviceTransfer bytes 8 reps 4945 clocks 20225 time 1.49774e-05 s bw_pair 0.000534139 GB/s bw_all 0.427311 GB/s
+sequentialDeviceTransfer bytes 16 reps 4093 clocks 24434 time 1.80943e-05 s bw_pair 0.000884256 GB/s bw_all 0.707405 GB/s
+sequentialDeviceTransfer bytes 32 reps 3367 clocks 29701 time 2.19947e-05 s bw_pair 0.00145489 GB/s bw_all 1.16392 GB/s
+sequentialDeviceTransfer bytes 64 reps 2486 clocks 40228 time 2.97904e-05 s bw_pair 0.00214835 GB/s bw_all 1.71868 GB/s
+sequentialDeviceTransfer bytes 128 reps 1746 clocks 57287 time 4.24232e-05 s bw_pair 0.00301722 GB/s bw_all 2.41377 GB/s
+sequentialDeviceTransfer bytes 256 reps 1099 clocks 91070 time 6.74408e-05 s bw_pair 0.00379592 GB/s bw_all 3.03674 GB/s
+sequentialDeviceTransfer bytes 512 reps 621 clocks 161182 time 0.000119361 s bw_pair 0.00428949 GB/s bw_all 3.43159 GB/s
+sequentialDeviceTransfer bytes 1024 reps 332 clocks 301876 time 0.000223551 s bw_pair 0.00458062 GB/s bw_all 3.66449 GB/s
+sequentialDeviceTransfer bytes 2048 reps 167 clocks 599376 time 0.000443861 s bw_pair 0.00461406 GB/s bw_all 3.69125 GB/s
+sequentialDeviceTransfer bytes 4096 reps 85 clocks 1178275 time 0.000872558 s bw_pair 0.00469425 GB/s bw_all 3.7554 GB/s
+sequentialDeviceTransfer bytes 8192 reps 43 clocks 2340228 time 0.00173303 s bw_pair 0.00472699 GB/s bw_all 3.78159 GB/s
+sequentialDeviceTransfer bytes 16384 reps 22 clocks 4662177 time 0.00345252 s bw_pair 0.00474552 GB/s bw_all 3.79642 GB/s
+sequentialDeviceTransfer bytes 32768 reps 11 clocks 9305110 time 0.00689079 s bw_pair 0.00475533 GB/s bw_all 3.80427 GB/s
+sequentialDeviceTransfer bytes 65536 reps 6 clocks 18584057 time 0.0137622 s bw_pair 0.00476203 GB/s bw_all 3.80962 GB/s
+sequentialDeviceTransfer bytes 131072 reps 3 clocks 37159027 time 0.0275177 s bw_pair 0.00476319 GB/s bw_all 3.81055 GB/s
