@@ -241,6 +241,7 @@ struct SharedState {
 
     // barrier between all threads on device and host thread
     __host__ __device__ void hostDeviceBarrier() {
+        memfence();
 #ifdef __CUDA_ARCH__
         __syncthreads();
         if (rank() == 0) syncWithHost();
@@ -726,6 +727,7 @@ int main() {
             // adjust number of repetitions
             for (int m = 0; m < measurements; m++) {
                 double time = ss->times[benchmark][m];
+                //printf("Time on host: %lg\n", time);
                 //time = 0.011;
                 ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
             }
@@ -743,6 +745,7 @@ int main() {
             // adjust number of repetitions
             for (int m = 0; m < measurements; m++) {
                 double time = ss->times[benchmark][m];
+                //printf("Time on host: %lg\n", time);
                 //time = 0.011;
                 ss->repetitions[benchmark][m] = minMeasurementTime / time + 1;
             }
