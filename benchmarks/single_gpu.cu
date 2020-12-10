@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cassert>
 
+
 #define CHECK(expr) \
     do { if ((expr) != 0) { printf("ERROR %s:%d %s\n", __FILE__, __LINE__, #expr); abort(); } } while (0)
 
