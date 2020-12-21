@@ -14,14 +14,6 @@ const int numMeasurements = 23;
 const size_t maxBufferSize = 1 << numMeasurements; 
 const int stages = 2;
 
-template <typename T>
-__forceinline__
-__host__ __device__ 
-volatile T& volatileAccess(T& val) {
-    volatile T* vval = &val;
-    return *vval;
-}
-
 struct SendRecv {
     void* volatile sendPtr;
     void* volatile recvPtr;
@@ -207,7 +199,7 @@ __global__ void sequentialTransferKernel(SharedState* ss) {
                 }
                 //cg::this_grid().sync();
                 //ss->deviceBarrier();
-                ss->hdc.deviceBarrier();
+                //ss->hdc.deviceBarrier();
             }
 
             //cg::this_grid().sync();
