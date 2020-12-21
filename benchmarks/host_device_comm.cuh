@@ -34,8 +34,7 @@ template <typename T>
 __forceinline__
 __host__ __device__
 volatile T& volatileAccess(T& val) {
-    volatile T* vval = &val;
-    return *vval;
+    return val;
 }
 
 class HostDeviceComm {
@@ -114,153 +113,228 @@ public:
     __host__ __device__ ManagedVector(int size, Args... args) : mSize(size)
     {
 #ifdef __CUDA_ARCH__
-        printf("ERROR: ManagedVector can't be initialized from device");
-        assert(0);
+        mData = (T*) malloc(mSize * sizeof(T));
 #else
         CUDA_CHECK(cudaMallocManaged(&mData, mSize * sizeof(T)));
+        
+#endif
         assert(mData);
         for (int i = 0; i < size; i++) {
             new (&mData[i]) T(args...);
         }
-#endif
     }
 
     __host__ __device__ ~ManagedVector() {
-#ifdef __CUDA_ARCH__
-        assert(0);
-#else
         for (int i = 0; i < mSize; i++) {
             mData[i].~T();
         }
-        CUDA_CHECK(cudaFree((T*)mData));
+#ifdef __CUDA_ARCH__
+        free(mData);
+#else
+        CUDA_CHECK(cudaFree(mData));
 #endif
     }
     
-    __host__ __device__ volatile T& operator[](int index) volatile {
+    __host__ __device__ T& operator[](int index) {
+        if (!(0 <= index && index < mSize)) {
+            printf("Index out of range\n");
+        }
         assert(0 <= index && index < mSize);
-        return VOLATILE(mData[index]);
+        return mData[index];
     }
 
-    __host__ __device__ int size() const volatile { return mSize; }
+    __host__ __device__ int size() const { return mSize; }
 
 private:
     int mSize;
     T* mData;
 };
 
-struct CircularBufferState {
-    __host__ __device__ CircularBufferState(int size)
+
+
+struct QueueState {
+    using Int32 = int;
+    using UInt64 = unsigned long long;
+    
+    __host__ __device__ QueueState(int size)
         : size(size)
-        , used(0)
-        , head(0)
-        , tail(0)
+        , state(0)
     {
     }
 
-    __host__ __device__ bool empty() const volatile { return used == 0; }
-    __host__ __device__ bool full() const volatile { return used == size; }
+    struct Impl {
+        static __device__ bool empty(const UInt64& state) { return used(state) == 0; }
+        static __device__ bool full(const UInt64& state, int size) { return used(state) == size; }
 
+        static __device__ const Int32& head(const UInt64& state) {
+            return ((const int*)&state)[0];
+        }
+        
+        static __device__ const Int32& used(const UInt64& state) {
+            return ((const int*)&state)[1];
+        }
+        
+        static __device__ Int32& head(UInt64& state) {
+            return ((int*)&state)[0];
+        }
+        
+        static __device__ Int32& used(UInt64& state) {
+            return ((int*)&state)[1];
+        }
+    };
+    
+    __device__ bool empty() const { 
+        UInt64 s = volatileAccess(state);
+        return Impl::empty(s);
+    }
+    __device__ bool full() const { 
+        UInt64 s = volatileAccess(state);
+        return Impl::full(s, size);
+    }
+    __device__ Int32& head() {
+        UInt64 s = volatileAccess(state);
+        return Impl::head(s);
+    }
+    __device__ Int32& used() {
+        UInt64 s = volatileAccess(state);
+        return Impl::used(s);
+    }
+    
     // reserve and return position for new element at the tail of queue
-    __host__ __device__ int push() volatile {
-        assert(!full());
-        used += 1;
-        int position = tail;
-        tail = (position + 1) % size;
-        return position;
+    __device__ bool try_push(int& pos) {
+        UInt64 oldState = volatileAccess(state);
+        if (Impl::full(oldState, size)) return false;
+        UInt64 newState;
+        Impl::head(newState) = Impl::head(oldState);
+        Impl::used(newState) = Impl::used(oldState) + 1;
+        if (oldState == atomicCAS(&state, oldState, newState)) {
+            // success, old state is not changed
+            pos = (Impl::head(oldState) + Impl::used(oldState)) % size;
+            //printf("Try push s, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+            return true;
+        }
+        return false;
     }
 
     // release and return (released) position of element from the head of queue
-    __host__ __device__ int pop() volatile {
-        assert(!empty());
-        used -= 1;
-        int position = head;
-        head = (position + 1) % size;
-        return position;
+    __device__ bool try_pop(int& pos) {
+        //printf("Try pop 1, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+        UInt64 oldState = volatileAccess(state);
+        if (Impl::empty(oldState)) {
+            //printf("Try pop f1, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+            return false;
+        }
+        UInt64 newState;
+        Impl::head(newState) = (Impl::head(oldState) + 1) % size;
+        Impl::used(newState) = Impl::used(oldState) - 1;
+        if (oldState == atomicCAS(&state, oldState, newState)) {
+            // success, old state is not changed
+            pos = Impl::head(oldState);
+            //printf("Try pop s, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+            return true;
+        }
+        //printf("Try pop f2, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+        return false;
     }
-
-    int used;
-    int head; // first
-    int tail; // next after last
+    
+    __device__ int push() {
+        int pos = -1;
+        while (!try_push(pos)) {}
+//         printf("Pushed, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+        return pos;
+    }
+    
+    __device__ int pop() {
+        int pos = -1;
+        while (!try_pop(pos)) {}
+//         printf("Popped, state = (size = %d, used = %d)\n", Impl::head(state), Impl::used(state));
+        return pos;
+    }
+    
+    __device__ int top() {
+        UInt64 s = 0;
+        do {
+            s = volatileAccess(state);
+        } while (Impl::empty(s));
+        return Impl::head(s);
+    }
+    
     int size;
-};
-
-template <typename T, template <typename> typename Vector>
-class CircularQueue {
-public:
-    
-    __host__ __device__ CircularQueue(int size)
-        : data(size)
-        , active(size, false)
-        , bufferState(size)
-    {
-    }
-    
-    __host__ __device__ int size() volatile {
-        return bufferState.size;
-    }
-    
-    __host__ __device__ int used() volatile {
-        return bufferState.used;
-    }
-    
-    __host__ __device__ bool empty() volatile {
-        return bufferState.empty();
-    }
-    
-    __host__ __device__ int full() volatile {
-        return bufferState.full();
-    }
-
-    __host__ __device__ int push(const T& md) volatile {
-        int position = bufferState.push();
-        data[position] = md;
-        active[position] = true;
-        return position;
-    }
-    
-    __host__ __device__ T& get(int position) volatile {
-        assert(0 <= position && position < data.size());
-        assert(active[position]);
-        return data[position];
-    }
-    
-    __host__ __device__ void pop(volatile T* elem) volatile {
-        int index = elem - &data[0];
-        assert(0 <= index && index < data.size());
-        active[index] = false;
-        if (bufferState.head == index) {
-            while (!active[index] && !bufferState.empty()) {
-                int removedIndex = bufferState.pop();
-                assert(removedIndex == index);
-                index = (index + 1) % data.size();
-            }
-        }
-    }
-
-    __host__ __device__ volatile T* head() volatile {
-        if (bufferState.empty()) return nullptr;
-        assert(active[bufferState.head]);
-        return &data[bufferState.head];
-    }
-
-    __host__ __device__ volatile T* next(volatile T* elem) volatile {
-        assert(elem);
-        int curIndex = elem - &data[0];
-        auto next = [size=data.size()] (int idx) { return (idx + 1) % size; };
-        for (int idx = next(curIndex); idx != bufferState.tail; idx = next(idx)) {
-            if (active[idx]) return &data[idx];
-        }
-        return nullptr;
-    }
-
 private:
-    Vector<T> data;
-    Vector<bool> active;
-    CircularBufferState bufferState;
+    UInt64 state;
 };
 
 template <typename T>
-using ManagedCircularQueue = CircularQueue<T, ManagedVector>;
+class Queue {
+public:
+    
+    struct Elem {
+        bool valid = false;
+        T value;
+    };
+    
+    __host__ __device__ Queue(int size)
+        : data(size)
+        , queueState(size)
+    {
+    }
+    
+    __device__ int size() {
+        return queueState.size;
+    }
+    
+    __device__ int used() {
+        return queueState.used();
+    }
+    
+    __device__ bool empty() {
+        return queueState.empty();
+    }
+    
+    __device__ int full() {
+        bool res = queueState.full();
+        if (res) printf("The queue is full\n");
+        return res;
+    }
+
+    __device__ void push(const T& val) {
+        while (!try_push(val)) {}
+    }
+    
+    __device__ T pop() {
+        T val;
+        while (!try_pop(val)) {}
+        return val;
+    }
+
+    __device__ bool try_push(const T& val) {
+        int pos = -1;
+        if (queueState.try_push(pos)) {
+            WAIT(data[pos].valid == false); // TODO: rewrite without WAIT
+            volatileAccess(data[pos].value) = val;
+            memfence();
+            volatileAccess(data[pos].valid) = true;
+            return true;
+        }
+        return false;
+    }
+    
+    __device__ bool try_pop(T& val) {
+        int pos = -1;
+        if (queueState.try_pop(pos)) {
+            WAIT(data[pos].valid == true); // TODO: rewrite without WAIT
+            val = volatileAccess(data[pos].value);
+            memfence();
+            volatileAccess(data[pos].valid) = false;
+            return true;
+        }
+        return false;
+    }
+        
+private:
+    ManagedVector<Elem> data;
+    QueueState queueState;
+};
 
 /*
  * Code of this function is taken from cooperative_groups::details::sync_grids()
