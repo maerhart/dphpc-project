@@ -8,10 +8,13 @@
 #include <cooperative_groups/details/helpers.h>
 
 #define CUDA_CHECK(expr) \
-    do { if ((expr) != cudaSuccess) { \
-        printf("CUDA_ERROR %s:%d %s\n", __FILE__, __LINE__, #expr); \
-        abort(); \
-    } } while (0)
+    do { \
+        cudaError_t err = (expr); \
+        if (err != cudaSuccess) { \
+            printf("CUDA_ERROR %s:%d %s %s\n", __FILE__, __LINE__, #expr, cudaGetErrorString(err)); \
+            abort(); \
+        } \
+    } while (0)
 
 __forceinline__ __host__ __device__ void memfence() {
 #if __CUDA_ARCH__
@@ -28,7 +31,26 @@ __forceinline__ __device__ uint64_t globaltime()
     return res;
 }
 
-#define WAIT(condition) do { memfence(); while(!(condition)) {} } while(0)
+// #define WAIT(condition) do {\
+//     int counter = 0;\
+//     memfence();\
+//     while(!(condition)) {\
+//         if (counter < 0) continue;\
+//         counter++;\
+//         if (counter >= 100000000) {\
+//             counter = -1;\
+//             printf("Potential livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
+//         }\
+//     }\
+//     if (counter < 0) {\
+//         printf("No livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
+//     }\
+// } while(0)
+
+#define WAIT(condition) do {\
+    memfence();\
+    while(!(condition)) {}\
+} while(0)
 
 template <typename T>
 __forceinline__
@@ -136,10 +158,7 @@ public:
     }
     
     __host__ __device__ T& operator[](int index) {
-        if (!(0 <= index && index < mSize)) {
-            printf("Index out of range\n");
-        }
-        assert(0 <= index && index < mSize);
+        //assert(0 <= index && index < mSize);
         return mData[index];
     }
 
@@ -267,73 +286,96 @@ private:
 template <typename T>
 class Queue {
 public:
+    using Int16 = short;
     
-    struct Elem {
-        bool valid = false;
-        T value;
-    };
-    
-    __host__ __device__ Queue(int size)
+    __host__ __device__ Queue(Int16 size)
         : data(size)
-        , queueState(size)
     {
     }
     
-    __device__ int size() {
-        return queueState.size;
-    }
-    
-    __device__ int used() {
-        return queueState.used();
-    }
-    
-    __device__ bool empty() {
-        return queueState.empty();
-    }
-    
-    __device__ int full() {
-        bool res = queueState.full();
-        if (res) printf("The queue is full\n");
-        return res;
+    __device__ Int16 size() {
+        return data.size();
     }
 
+    __device__ bool reserveElem(Int16& reservedIndex) {
+        State oldState = state;
+        if (oldState.part.reserved == data.size()) {
+            // queue is full
+            return false;
+        }
+        State newState = oldState;
+        newState.part.reserved += 1;
+        if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+            // success, old state is not changed
+            reservedIndex = (oldState.part.head + oldState.part.reserved) % size();
+            return true;
+        }
+        return false;
+    }
+    
+    __device__ bool makeElemValid(Int16 elemIndex) {
+        State oldState = state;
+        if ((oldState.part.head + oldState.part.valid) % size() != elemIndex) {
+            // not all elements before elemIndex are valid, so can't validate current elem as well
+            return false;
+        }
+        State newState = oldState;
+        newState.part.valid += 1;
+        if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+            // success, old state is not changed
+            return true;
+        }
+        return false;
+    }
+    
+    __device__ bool tryPop(T& elem) {
+        State oldState = state;
+        if (oldState.part.valid == 0) {
+            // queue is empty
+            return false;
+        }
+        State newState = oldState;
+        newState.part.valid -= 1;
+        newState.part.reserved -= 1;
+        newState.part.head = (oldState.part.head + 1) % size();
+        T potentialElem = data[oldState.part.head];
+        memfence(); // pop element only after reading the value
+        if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+            // success, old state is not changed
+            elem = potentialElem;
+//             printf("Pop completed %p\n", elem);
+            return true;
+        }
+        return false;
+    }
+    
     __device__ void push(const T& val) {
-        while (!try_push(val)) {}
-    }
-    
-    __device__ T pop() {
-        T val;
-        while (!try_pop(val)) {}
-        return val;
-    }
-
-    __device__ bool try_push(const T& val) {
-        int pos = -1;
-        if (queueState.try_push(pos)) {
-            WAIT(data[pos].valid == false); // TODO: rewrite without WAIT
-            volatileAccess(data[pos].value) = val;
-            memfence();
-            volatileAccess(data[pos].valid) = true;
-            return true;
-        }
-        return false;
-    }
-    
-    __device__ bool try_pop(T& val) {
-        int pos = -1;
-        if (queueState.try_pop(pos)) {
-            WAIT(data[pos].valid == true); // TODO: rewrite without WAIT
-            val = volatileAccess(data[pos].value);
-            memfence();
-            volatileAccess(data[pos].valid) = false;
-            return true;
-        }
-        return false;
+        Int16 reservedIndex = -1;
+        WAIT(reserveElem(reservedIndex));
+        data[reservedIndex] = val;
+        memfence(); // make elem valid only after assigning it
+        WAIT(makeElemValid(reservedIndex));
+//         printf("Push completed %p\n", val);
     }
         
 private:
-    ManagedVector<Elem> data;
-    QueueState queueState;
+    using UInt64 = unsigned long long;
+    
+    union State {
+        __host__ __device__ State() : full(0) {}
+        struct {
+            Int16 head; // index of head
+            Int16 valid; // number of valid elements
+            Int16 reserved; // number of reserved elements (reserved <= valid <= reserved + 1)
+        } part;
+        UInt64 full;
+    } state;
+
+    static_assert(sizeof(Int16) == 2);
+    static_assert(sizeof(UInt64) == 8);
+    static_assert(sizeof(State) == 8);
+    
+    ManagedVector<T> data;
 };
 
 /*

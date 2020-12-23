@@ -72,17 +72,17 @@ struct SharedState {
     __device__ void send(void* buf, size_t size, int dst) {
         SendRecv& dsr = sr[dst];
         WAIT(!dsr.sendCompleted && !dsr.recvCompleted);
-        dsr.sendPtr = buf;
         dsr.transferSize = size;
+        dsr.sendPtr = buf;
     }
 
     __device__ void recv(void* buf, size_t size, int src) {
         int myrank = blockIdx.x; // only relevant for benchmark
         SendRecv& dsr = sr[myrank];
         WAIT(!dsr.recvCompleted && !dsr.sendCompleted);
-        dsr.recvPtr = buf;
         dsr.transferSize = size;
-
+        dsr.recvPtr = buf;
+        
         // put copy requiest in queue
         WAIT(dsr.sendPtr);
         mq.push(&dsr);
@@ -154,9 +154,9 @@ struct SharedState {
 
     HostDeviceComm hdc;
     
-    SendRecv* nextSR = nullptr;
+    SendRecv* volatile nextSR = nullptr;
     
-    Queue<SendRecv*> mq = {2};
+    Queue<SendRecv*> mq = {4};
 };
 
 // https://en.wikipedia.org/wiki/Ordinary_least_squares#Simple_linear_regression_model
@@ -215,7 +215,7 @@ __device__ void benchmarkImpl(SharedState* ss) {
             myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
 
             for (int r = 0; r < repetitions; r++) {
-                printf("repeat %d, rank %d\n", r, myrank);
+//                 printf("repeat %d, rank %d\n", r, myrank);
                 if (isEven) {
                     ss->send(buffer, bufferSize, pairId);
                     ss->waitSendFinish(pairId);
@@ -229,7 +229,7 @@ __device__ void benchmarkImpl(SharedState* ss) {
                     ss->send(buffer, bufferSize, pairId);
                     ss->waitSendFinish(pairId);
                 }
-                //myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0); // TODO: remove, only for debugging
+//                 myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0); // TODO: remove, only for debugging
             }
 
             myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
@@ -258,31 +258,36 @@ __device__ void benchmarkImpl(SharedState* ss) {
 }
 
 __forceinline__
-__device__ void copyImpl(SharedState* ss) {
+__device__ bool copyImpl(SharedState* ss) {
     int rank = ss->copyRank();
     int size = ss->copySize();
     int workloadBlocks = ss->workloadSize() / blockDim.x;
     
     if (rank == 0) {
-        ss->nextSR = nullptr;
-        ss->mq.try_pop(ss->nextSR);
+        SendRecv* sr = nullptr;
+        if (ss->mq.tryPop(sr)) {
+            ss->nextSR = sr;
+        } else {
+            ss->nextSR = nullptr;
+        }
+        
     }
-    
+        
     myCudaBarrier(size, &ss->copyBarrier, rank == 0);
-    
-    //printf("Copy thread check send-recv operation\n");
-    if (!ss->nextSR) return;
-    
-    SendRecv& sr = *ss->nextSR;
-    
+            
+    if (!ss->nextSR) return false;
+        
+    SendRecv sr = *ss->nextSR;
+
     copyKernel(sr.recvPtr, sr.sendPtr, sr.transferSize, rank, size);
-    
+      
     myCudaBarrier(size, &ss->copyBarrier, rank == 0);
-    
+        
     if (rank == 0) {
-        sr.finishTransfer();
+        ss->nextSR->finishTransfer();
     }
     
+    return true;
 }
 
 __global__ void benchmarkKernel(SharedState* ss) {    
@@ -313,7 +318,7 @@ int main() {
     CUDA_CHECK(cudaStreamCreate(&benchmarkKernelStream));
 
     
-    int blockDim = 64;
+    int blockDim = 1;
     blockDim = 1;
     void* kernelArgs[] = { (void*) &ss };
     size_t sharedMem = 0;
@@ -326,12 +331,12 @@ int main() {
     int multiProcessorCount = 0;
     CUDA_CHECK(cudaDeviceGetAttribute(&multiProcessorCount, cudaDevAttrMultiProcessorCount, device));
     int gridDim = blocksPerMP * multiProcessorCount;
-    gridDim = 4;
+    //gridDim = 3;
     int totalThreads = gridDim * blockDim;
     printf("Number of multiprocessors %d, total blocks %d, total threads %d\n", multiProcessorCount, gridDim, totalThreads);
 
-    ss->copyBlocks = gridDim / 10; // 10% of thread blocks for copies
-    ss->copyBlocks = 2;
+    ss->copyBlocks = gridDim * 5 / 10; // % of thread blocks for copies
+    //ss->copyBlocks = 1;
     ss->workloadBlocks = gridDim - ss->copyBlocks; // remaining threads for MPI processes
     //ss->workloadBlocks = 2;
     
