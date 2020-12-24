@@ -9,18 +9,33 @@
 
 cudaStream_t benchmarkKernelStream;
 
-const int numMeasurements = 23; 
+const int numMeasurements = 24; 
 const size_t maxBufferSize = 1 << numMeasurements; 
 const int stages = 2;
 
 
-__forceinline__ __device__
-void copyKernel(void* dst, void* src, size_t size, size_t start, size_t step) {
-    char* d = (char*) dst;
-    char* s = (char*) src;
-    
-    for (size_t i = start; i < size; i += step) {
+template <typename T>
+__device__ void alignedCopyKernel(void* __restrict__ dst, const void* __restrict__ src, size_t size, size_t start, size_t step) {
+    T* d = (T*) dst;
+    const T* __restrict__ s = (const T*) src;
+    for (size_t i = start; i < size / sizeof(T); i += step) {
         d[i] = s[i];
+    }
+}
+
+__device__ void copyKernel(void* __restrict__ dst, const void* __restrict__ src, size_t size, size_t start, size_t step) {
+    size_t d = (size_t) dst;
+    size_t s = (size_t) src;
+    if (d % sizeof(uint4) == 0 && s % sizeof(uint4) == 0 && size % sizeof(uint4) == 0) {
+        alignedCopyKernel<uint4>(dst, src, size, start, step);
+    } else if (d % sizeof(uint2) == 0 && s % sizeof(uint2) == 0 && size % sizeof(uint2) == 0) {
+        alignedCopyKernel<uint2>(dst, src, size, start, step);
+    } else if (d % sizeof(uint1) == 0 && s % sizeof(uint1) == 0 && size % sizeof(uint1) == 0) {
+        alignedCopyKernel<uint1>(dst, src, size, start, step);
+    } else if (d % sizeof(ushort1) == 0 && s % sizeof(ushort1) == 0 && size % sizeof(ushort1) == 0) {
+        alignedCopyKernel<ushort1>(dst, src, size, start, step);
+    } else {
+        alignedCopyKernel<uchar1>(dst, src, size, start, step);
     }
 }
 
@@ -103,7 +118,7 @@ struct SharedState {
         dsr.recvCompleted = false;
     }
 
-    __host__ __device__ void waitTransferArguments(int dst) {
+    __device__ void waitTransferArguments(int dst) {
         SendRecv& dsr = sr[dst];
         WAIT(dsr.sendPtr && dsr.recvPtr);
     }
@@ -156,7 +171,7 @@ struct SharedState {
     
     SendRecv* volatile nextSR = nullptr;
     
-    Queue<SendRecv*> mq = {4};
+    Queue<SendRecv*> mq = {1 << 14};
 };
 
 // https://en.wikipedia.org/wiki/Ordinary_least_squares#Simple_linear_regression_model
@@ -210,9 +225,9 @@ __device__ void benchmarkImpl(SharedState* ss) {
         for (int stage = 0; stage < stages; stage++) {
             int repetitions = ss->asyncTransferRepetitions[m];
 
-            myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
+            myCudaBarrier(ss->workloadBlocks, &ss->benchmarkBarrier, myrank == 0);
             auto t1 = clock64();
-            myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
+            myCudaBarrier(ss->workloadBlocks, &ss->benchmarkBarrier, myrank == 0);
 
             for (int r = 0; r < repetitions; r++) {
 //                 printf("repeat %d, rank %d\n", r, myrank);
@@ -229,10 +244,10 @@ __device__ void benchmarkImpl(SharedState* ss) {
                     ss->send(buffer, bufferSize, pairId);
                     ss->waitSendFinish(pairId);
                 }
-//                 myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0); // TODO: remove, only for debugging
+//                 myCudaBarrier(ss->workloadBlocks, &ss->benchmarkBarrier, myrank == 0); // TODO: remove, only for debugging
             }
 
-            myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
+            myCudaBarrier(ss->workloadBlocks, &ss->benchmarkBarrier, myrank == 0);
 
             auto t2 = clock64();
 
@@ -245,7 +260,7 @@ __device__ void benchmarkImpl(SharedState* ss) {
                 printf("bufferSize %lld repetitions %d measuredClocks %lld\n", (long long)bufferSize, repetitions, measuredClocks);
             }
 
-            myCudaBarrier(mysize, &ss->benchmarkBarrier, myrank == 0);
+            myCudaBarrier(ss->workloadBlocks, &ss->benchmarkBarrier, myrank == 0);
         }
     }
 
@@ -273,15 +288,21 @@ __device__ bool copyImpl(SharedState* ss) {
         
     }
         
-    myCudaBarrier(size, &ss->copyBarrier, rank == 0);
+    myCudaBarrier(ss->copyBlocks, &ss->copyBarrier, rank == 0);
             
     if (!ss->nextSR) return false;
         
     SendRecv sr = *ss->nextSR;
 
+//     long long start_time = clock64();
+    
     copyKernel(sr.recvPtr, sr.sendPtr, sr.transferSize, rank, size);
-      
-    myCudaBarrier(size, &ss->copyBarrier, rank == 0);
+    
+    myCudaBarrier(ss->copyBlocks, &ss->copyBarrier, rank == 0);
+    
+//     if (rank == 0) {
+//         printf("Copy of %d bytes %lld clocks\n", int(sr.transferSize), (clock64() - start_time));
+//     }
         
     if (rank == 0) {
         ss->nextSR->finishTransfer();
@@ -319,7 +340,7 @@ int main() {
 
     
     int blockDim = 1;
-    blockDim = 1;
+    blockDim = 64;
     void* kernelArgs[] = { (void*) &ss };
     size_t sharedMem = 0;
 
@@ -331,12 +352,12 @@ int main() {
     int multiProcessorCount = 0;
     CUDA_CHECK(cudaDeviceGetAttribute(&multiProcessorCount, cudaDevAttrMultiProcessorCount, device));
     int gridDim = blocksPerMP * multiProcessorCount;
-    //gridDim = 3;
+    //gridDim = 66;
     int totalThreads = gridDim * blockDim;
     printf("Number of multiprocessors %d, total blocks %d, total threads %d\n", multiProcessorCount, gridDim, totalThreads);
 
-    ss->copyBlocks = gridDim * 5 / 10; // % of thread blocks for copies
-    //ss->copyBlocks = 1;
+    ss->copyBlocks = gridDim * 2 / 10; // % of thread blocks for copies
+    //ss->copyBlocks = 128;
     ss->workloadBlocks = gridDim - ss->copyBlocks; // remaining threads for MPI processes
     //ss->workloadBlocks = 2;
     

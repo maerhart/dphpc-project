@@ -1,0 +1,78 @@
+Max active blocks per multiprocessor (async transfer kernel) 8
+Number of multiprocessors 80, total blocks 640, total threads 40960
+copyBlocks 128 workloadBlocks 512
+Benchmark started
+bufferSize 1 repetitions 1 measuredClocks 52643677
+bufferSize 1 repetitions 4 measuredClocks 49737743
+bufferSize 2 repetitions 1 measuredClocks 52735923
+bufferSize 2 repetitions 4 measuredClocks 50030052
+bufferSize 4 repetitions 1 measuredClocks 47153532
+bufferSize 4 repetitions 5 measuredClocks 43866915
+bufferSize 8 repetitions 1 measuredClocks 41490323
+bufferSize 8 repetitions 5 measuredClocks 38300739
+bufferSize 16 repetitions 1 measuredClocks 35565803
+bufferSize 16 repetitions 6 measuredClocks 32210835
+bufferSize 32 repetitions 1 measuredClocks 35375727
+bufferSize 32 repetitions 6 measuredClocks 32238913
+bufferSize 64 repetitions 1 measuredClocks 35494131
+bufferSize 64 repetitions 6 measuredClocks 32228525
+bufferSize 128 repetitions 1 measuredClocks 35504429
+bufferSize 128 repetitions 6 measuredClocks 32247074
+bufferSize 256 repetitions 1 measuredClocks 35685291
+bufferSize 256 repetitions 6 measuredClocks 32256971
+bufferSize 512 repetitions 1 measuredClocks 35485595
+bufferSize 512 repetitions 6 measuredClocks 32267881
+bufferSize 1024 repetitions 1 measuredClocks 35382848
+bufferSize 1024 repetitions 6 measuredClocks 32244717
+bufferSize 2048 repetitions 1 measuredClocks 35539904
+bufferSize 2048 repetitions 6 measuredClocks 32378934
+bufferSize 4096 repetitions 1 measuredClocks 35649983
+bufferSize 4096 repetitions 6 measuredClocks 32475480
+bufferSize 8192 repetitions 1 measuredClocks 35828763
+bufferSize 8192 repetitions 6 measuredClocks 32573923
+bufferSize 16384 repetitions 1 measuredClocks 35935975
+bufferSize 16384 repetitions 6 measuredClocks 32632769
+bufferSize 32768 repetitions 1 measuredClocks 36060656
+bufferSize 32768 repetitions 6 measuredClocks 32695486
+bufferSize 65536 repetitions 1 measuredClocks 36899813
+bufferSize 65536 repetitions 6 measuredClocks 33511920
+bufferSize 131072 repetitions 1 measuredClocks 37079170
+bufferSize 131072 repetitions 6 measuredClocks 33707190
+bufferSize 262144 repetitions 1 measuredClocks 39795475
+bufferSize 262144 repetitions 6 measuredClocks 36441628
+bufferSize 524288 repetitions 1 measuredClocks 45325882
+bufferSize 524288 repetitions 5 measuredClocks 42169741
+bufferSize 1048576 repetitions 1 measuredClocks 56021078
+bufferSize 1048576 repetitions 4 measuredClocks 53002463
+bufferSize 2097152 repetitions 1 measuredClocks 76588675
+bufferSize 2097152 repetitions 3 measuredClocks 73864738
+bufferSize 4194304 repetitions 1 measuredClocks 117538222
+bufferSize 4194304 repetitions 2 measuredClocks 115507742
+bufferSize 8388608 repetitions 1 measuredClocks 198544762
+bufferSize 8388608 repetitions 2 measuredClocks 196378216
+Total benchmark time 4.54265 s, GPU clock ticks 6265545343
+GPU clock rate 1.37927 GHz
+bytes 2 reps 5 clocks 49737743 time 0.0360609 s bw_pair 5.54617e-08 GB/s bw_all 1.41982e-05 GB/s
+bytes 4 reps 4 clocks 50030052 time 0.0362729 s bw_pair 1.10275e-07 GB/s bw_all 2.82305e-05 GB/s
+bytes 8 reps 5 clocks 43866915 time 0.0318045 s bw_pair 2.51537e-07 GB/s bw_all 6.43935e-05 GB/s
+bytes 16 reps 6 clocks 38300739 time 0.0277689 s bw_pair 5.76185e-07 GB/s bw_all 0.000147503 GB/s
+bytes 32 reps 7 clocks 32210835 time 0.0233535 s bw_pair 1.37024e-06 GB/s bw_all 0.000350782 GB/s
+bytes 64 reps 7 clocks 32238913 time 0.0233739 s bw_pair 2.7381e-06 GB/s bw_all 0.000700953 GB/s
+bytes 128 reps 7 clocks 32228525 time 0.0233664 s bw_pair 5.47796e-06 GB/s bw_all 0.00140236 GB/s
+bytes 256 reps 7 clocks 32247074 time 0.0233798 s bw_pair 1.09496e-05 GB/s bw_all 0.0028031 GB/s
+bytes 512 reps 7 clocks 32256971 time 0.023387 s bw_pair 2.18925e-05 GB/s bw_all 0.00560448 GB/s
+bytes 1024 reps 7 clocks 32267881 time 0.0233949 s bw_pair 4.37702e-05 GB/s bw_all 0.0112052 GB/s
+bytes 2048 reps 7 clocks 32244717 time 0.0233781 s bw_pair 8.76033e-05 GB/s bw_all 0.0224264 GB/s
+bytes 4096 reps 7 clocks 32378934 time 0.0234754 s bw_pair 0.00017448 GB/s bw_all 0.044667 GB/s
+bytes 8192 reps 7 clocks 32475480 time 0.0235454 s bw_pair 0.000347923 GB/s bw_all 0.0890684 GB/s
+bytes 16384 reps 7 clocks 32573923 time 0.0236168 s bw_pair 0.000693744 GB/s bw_all 0.177598 GB/s
+bytes 32768 reps 7 clocks 32632769 time 0.0236595 s bw_pair 0.00138499 GB/s bw_all 0.354556 GB/s
+bytes 65536 reps 7 clocks 32695486 time 0.0237049 s bw_pair 0.00276466 GB/s bw_all 0.707752 GB/s
+bytes 131072 reps 6 clocks 33511920 time 0.0242969 s bw_pair 0.00539461 GB/s bw_all 1.38102 GB/s
+bytes 262144 reps 6 clocks 33707190 time 0.0244384 s bw_pair 0.0107267 GB/s bw_all 2.74604 GB/s
+bytes 524288 reps 6 clocks 36441628 time 0.026421 s bw_pair 0.0198436 GB/s bw_all 5.07997 GB/s
+bytes 1048576 reps 5 clocks 42169741 time 0.030574 s bw_pair 0.0342964 GB/s bw_all 8.77987 GB/s
+bytes 2097152 reps 4 clocks 53002463 time 0.0384279 s bw_pair 0.0545737 GB/s bw_all 13.9709 GB/s
+bytes 4194304 reps 3 clocks 73864738 time 0.0535535 s bw_pair 0.0783199 GB/s bw_all 20.0499 GB/s
+bytes 8388608 reps 2 clocks 115507742 time 0.0837456 s bw_pair 0.100168 GB/s bw_all 25.6429 GB/s
+bytes 16777216 reps 2 clocks 196378216 time 0.142378 s bw_pair 0.117835 GB/s bw_all 30.1659 GB/s

@@ -31,26 +31,44 @@ __forceinline__ __device__ uint64_t globaltime()
     return res;
 }
 
-// #define WAIT(condition) do {\
-//     int counter = 0;\
-//     memfence();\
-//     while(!(condition)) {\
-//         if (counter < 0) continue;\
-//         counter++;\
-//         if (counter >= 100000000) {\
-//             counter = -1;\
-//             printf("Potential livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
-//         }\
-//     }\
-//     if (counter < 0) {\
-//         printf("No livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
-//     }\
-// } while(0)
+#define DEBUG_WAIT(condition) do {\
+    int counter = 0;\
+    memfence();\
+    while(!(condition)) {\
+        if (counter < 0) continue;\
+        counter++;\
+        if (counter >= 100000000) {\
+            counter = -1;\
+            printf("Potential livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
+        }\
+    }\
+    if (counter < 0) {\
+        printf("No livelock at %s:%d threadIdx.x = %d blockIdx.x = %d\n", __FILE__, __LINE__, threadIdx.x, blockIdx.x);\
+    }\
+} while(0)
 
-#define WAIT(condition) do {\
+#define PLAIN_WAIT(condition) do {\
     memfence();\
     while(!(condition)) {}\
 } while(0)
+
+#define SLEEP_WAIT(condition) do {\
+    memfence();\
+    long long _wait_start = clock64();\
+    long long _sleep_time = 1;\
+    while(true) {\
+        if (condition) break;\
+        else {\
+            if (_sleep_time < 1000) {\
+                _sleep_time *= 2;\
+            }\
+            long long _current_clock = clock64();\
+            while (clock64() - _current_clock < _sleep_time) {}\
+        }\
+    }\
+} while(0)
+
+#define WAIT DEBUG_WAIT
 
 template <typename T>
 __forceinline__
@@ -103,16 +121,16 @@ public:
 
 private:
     __device__ void syncWithHostFromDevice() {
-        WAIT(hostData->deviceBarrierReady == false);
+        PLAIN_WAIT(hostData->deviceBarrierReady == false);
         hostData->deviceBarrierReady = true;
-        WAIT(hostData->hostBarrierReady == true);
+        PLAIN_WAIT(hostData->hostBarrierReady == true);
         hostData->hostBarrierReady = false;
     }
 
     void syncWithDeviceFromHost() {
-        WAIT(hostData->hostBarrierReady == false);
+        PLAIN_WAIT(hostData->hostBarrierReady == false);
         hostData->hostBarrierReady = true;
-        WAIT(hostData->deviceBarrierReady == true);
+        PLAIN_WAIT(hostData->deviceBarrierReady == true);
         hostData->deviceBarrierReady = false;
     }
   
@@ -283,6 +301,107 @@ private:
     UInt64 state;
 };
 
+// template <typename T>
+// class Queue {
+// public:
+//     using Int16 = short;
+//     
+//     __host__ __device__ Queue(Int16 size)
+//         : data(size)
+//     {
+//     }
+//     
+//     __device__ Int16 size() {
+//         return data.size();
+//     }
+// 
+//     __device__ bool reserveElem(Int16& reservedIndex) {
+//         State oldState = state;
+//         if (oldState.part.reserved == data.size()) {
+//             queue is full
+//             return false;
+//         }
+//         State newState = oldState;
+//         newState.part.reserved += 1;
+//         if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+//             success, old state is not changed
+//             reservedIndex = (oldState.part.head + oldState.part.reserved) % size();
+//             return true;
+//         }
+//         return false;
+//     }
+//     
+//     __device__ bool makeElemValid(Int16 elemIndex) {
+//         State oldState = state;
+//         if ((oldState.part.head + oldState.part.valid) % size() != elemIndex) {
+//             not all elements before elemIndex are valid, so can't validate current elem as well
+//             return false;
+//         }
+//         State newState = oldState;
+//         newState.part.valid += 1;
+//         if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+//             success, old state is not changed
+//             return true;
+//         }
+//         return false;
+//     }
+//     
+//     __device__ bool tryPop(T& elem) {
+//         State oldState = state;
+//         if (oldState.part.valid == 0) {
+//             queue is empty
+//             return false;
+//         }
+//         State newState = oldState;
+//         newState.part.valid -= 1;
+//         newState.part.reserved -= 1;
+//         newState.part.head = (oldState.part.head + 1) % size();
+//         T potentialElem = data[oldState.part.head];
+//         memfence(); // pop element only after reading the value
+//         if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
+//             success, old state is not changed
+//             elem = potentialElem;
+//             printf("Pop value %d\n", elem);
+//             return true;
+//         }
+//         return false;
+//     }
+//     
+//     __device__ void push(const T& val) {
+//         Int16 reservedIndex = -1;
+//         WAIT(reserveElem(reservedIndex));
+//         data[reservedIndex] = val;
+//         memfence(); // make elem valid only after assigning it
+//         WAIT(makeElemValid(reservedIndex));
+//         printf("Push value %d\n", val);
+//     }
+//     
+//     __device__ T pop() {
+//         T elem;
+//         WAIT(tryPop(elem));
+//         return elem;
+//     }
+//         
+// private:
+//     using UInt64 = unsigned long long;
+//     
+//     union State {
+//         __host__ __device__ State() : full(0) {}
+//         struct {
+//             Int16 head; // index of head
+//             Int16 valid; // number of valid elements
+//             Int16 reserved; // number of reserved elements (reserved <= valid <= reserved + 1)
+//         } part;
+//         UInt64 full;
+//     } state;
+// 
+//     static_assert(sizeof(Int16) == 2);
+//     static_assert(sizeof(UInt64) == 8);
+//     static_assert(sizeof(State) == 8);
+//     
+//     ManagedVector<T> data;
+// };
+
 template <typename T>
 class Queue {
 public:
@@ -343,7 +462,7 @@ public:
         if (oldState.full == atomicCAS(&state.full, oldState.full, newState.full)) {
             // success, old state is not changed
             elem = potentialElem;
-//             printf("Pop completed %p\n", elem);
+            //printf("Pop value %d\n", elem);
             return true;
         }
         return false;
@@ -355,7 +474,13 @@ public:
         data[reservedIndex] = val;
         memfence(); // make elem valid only after assigning it
         WAIT(makeElemValid(reservedIndex));
-//         printf("Push completed %p\n", val);
+        //printf("Push value %d\n", val);
+    }
+    
+    __device__ T pop() {
+        T elem;
+        WAIT(tryPop(elem));
+        return elem;
     }
         
 private:
@@ -383,7 +508,7 @@ private:
  * defined in cooperative_groups/details/sync.h
  */
 __forceinline__ __device__
-void myCudaBarrier(unsigned int expected, volatile unsigned int* arrived, bool master) {
+void myCudaBarrier(unsigned int expectedBlocks, volatile unsigned int* arrived, bool master) {
     bool cta_master = (threadIdx.x + threadIdx.y + threadIdx.z == 0);
 
     __syncthreads();
@@ -391,7 +516,7 @@ void myCudaBarrier(unsigned int expected, volatile unsigned int* arrived, bool m
     if (cta_master) {
         unsigned int nb = 1;
         if (master) {
-            nb = 0x80000000 - (expected - 1);
+            nb = 0x80000000 - (expectedBlocks - 1);
         }
 
         __threadfence();
@@ -399,7 +524,7 @@ void myCudaBarrier(unsigned int expected, volatile unsigned int* arrived, bool m
         unsigned int oldArrive;
         oldArrive = cooperative_groups::details::atomic_add(arrived, nb);
 
-        while (!cooperative_groups::details::bar_has_flipped(oldArrive, *arrived));
+        WAIT(cooperative_groups::details::bar_has_flipped(oldArrive, *arrived));
 
         //flush barrier upon leaving
         cooperative_groups::details::bar_flush((unsigned int*)arrived);
