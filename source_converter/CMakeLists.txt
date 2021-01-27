@@ -14,6 +14,7 @@ target_include_directories(converter PUBLIC ${CLANG_INCLUDE_DIRS})
 target_link_libraries(converter PRIVATE
     LLVMOption
     LLVMSupport
+    LLVMFrontendOpenMP # I have to add this to fix link issue in clang 11.0.1
     clangAST
     clangASTMatchers
     clangBasic

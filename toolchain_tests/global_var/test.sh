@@ -1,6 +1,6 @@
 #!/bin/bash
 
-scriptdir=$(dirname "$0")
+scriptdir=$(readlink -f $(dirname "$0"))
 
 cd "$scriptdir"
 

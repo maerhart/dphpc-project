@@ -128,7 +128,7 @@ public:
     {
         llvm::errs() << "** Creating AST consumer for: " << file << "\n";
         mRewriter.setSourceMgr(ci.getSourceManager(), ci.getLangOpts());
-        return llvm::make_unique<MyASTConsumer>(mRewriter);
+        return std::make_unique<MyASTConsumer>(mRewriter);
     }
 private:
     Rewriter mRewriter;
