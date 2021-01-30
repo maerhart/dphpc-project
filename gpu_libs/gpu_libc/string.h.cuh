@@ -37,5 +37,6 @@
 #define strtol __gpu_strtol
 #define strtoull __gpu_strtoull
 #define strtoul __gpu_sttoul
+#define strdup __gpu_strdup
 
 #endif // STRING_H_CUH

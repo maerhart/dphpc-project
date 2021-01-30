@@ -456,3 +456,9 @@ __device__ unsigned long int __gpu_strtoul(const char *ptr, char **endptr, int b
   return __gpu_strtoull(ptr, endptr, base);
 }
 
+__device__ char *__gpu_strdup(const char *s) {
+  size_t len = __gpu_strlen(s);
+  char* copy = (char*) malloc(len + 1);
+  memcpy(copy, s, len + 1);
+  return copy;
+}

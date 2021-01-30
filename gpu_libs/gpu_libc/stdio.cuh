@@ -10,6 +10,8 @@ __device__ extern __gpu_FILE *__gpu_stderr;
 
 __device__ int __gpu_fprintf(__gpu_FILE * __stream, const char * __format, ...);
 
+__device__ int __gpu_fscanf(__gpu_FILE *stream, const char *format, ...);
+
 __device__ int __gpu_fflush(__gpu_FILE *__stream);
 
 __device__ __gpu_FILE *__gpu_fopen(const char *pathname, const char *mode);

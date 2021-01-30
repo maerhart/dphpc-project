@@ -37,3 +37,4 @@ __device__ long long int __gpu_strtoll(const char *nptr, char **endptr, int base
 __device__ long int __gpu_strtol(const char *nptr, char** endptr, int base);
 __device__ unsigned long long int __gpu_strtoull(const char *ptr, char **endptr, int base);
 __device__ unsigned long int __gpu_strtoul(const char *ptr, char **endptr, int base);
+__device__ char *__gpu_strdup(const char *s);

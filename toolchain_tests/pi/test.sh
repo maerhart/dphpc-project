@@ -8,4 +8,4 @@ cd "$scriptdir"
 
 binary=$(find "$scriptdir/gpumpi_build" -name 'target_*_cpi_c')
 
-"$binary" ---gpumpi -g 4 -b 1
+"$binary" ---gpumpi -g 4 -b 1 -s 8192

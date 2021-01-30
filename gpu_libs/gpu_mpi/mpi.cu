@@ -267,9 +267,40 @@ __device__ int MPI_Barrier(MPI_Comm comm) {
     return MPI_SUCCESS;
 }
 
-__device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
-            MPI_Datatype sendtype, void *recvbuf, int recvcount,
-            MPI_Datatype recvtype, MPI_Comm comm)
+__device__ int MPI_Alltoall(
+    const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+    void *recvbuf, int recvcount, MPI_Datatype recvtype,
+    MPI_Comm comm)
+{
+    int comm_size = -1;
+    MPI_Comm_size(comm, &comm_size);
+
+    int* sdispls = (int*) malloc(comm_size * sizeof(int));
+    int* rdispls = (int*) malloc(comm_size * sizeof(int));
+    int* sendcounts = (int*) malloc(comm_size * sizeof(int));
+    int* recvcounts = (int*) malloc(comm_size * sizeof(int));
+
+    for (int i = 0; i < comm_size; i++) {
+        sdispls[i] = i * sendcount;
+        rdispls[i] = i * recvcount;
+        sendcounts[i] = sendcount;
+        recvcounts[i] = recvcount;
+    }
+    int res = MPI_Alltoallv(
+        sendbuf, sendcounts, sdispls, sendtype,
+        recvbuf, recvcounts, rdispls, recvtype, comm);
+
+    free(sdispls);
+    free(rdispls);
+    free(sendcounts);
+    free(recvcounts);
+
+    return res;
+}
+__device__ int MPI_Alltoallv(
+    const void *sendbuf, const int sendcounts[], const int sdispls[], MPI_Datatype sendtype,
+    void *recvbuf, const int recvcounts[], const int rdispls[], MPI_Datatype recvtype, 
+    MPI_Comm comm) 
 {
     int comm_size = -1;
     int comm_rank = -1;
@@ -286,19 +317,19 @@ __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
 
     for (int i = 0; i < comm_size; i++) {
         if (i != comm_rank) {
-            MPI_Isend(((char*)sendbuf) + i * sendcount * sendElemSize, sendcount, sendtype, i, MPI_COLLECTIVE_TAG, comm, &send_requests[i]);
+            MPI_Isend(((char*)sendbuf) + sdispls[i] * sendElemSize, sendcounts[i], sendtype, i, MPI_COLLECTIVE_TAG, comm, &send_requests[i]);
         }
     }
 
     for (int i = 0; i < comm_size; i++) {
         if (i != comm_rank) {
-            MPI_Irecv(((char*)recvbuf) + i * recvcount * recvElemSize, recvcount, recvtype, i, MPI_COLLECTIVE_TAG, comm, &recv_requests[i]);
+            MPI_Irecv(((char*)recvbuf) + rdispls[i] * recvElemSize, recvcounts[i], recvtype, i, MPI_COLLECTIVE_TAG, comm, &recv_requests[i]);
         }
     }
 
-    memcpy(((char*)recvbuf) + comm_rank * recvcount * recvElemSize, 
-           ((char*)sendbuf) + comm_rank * sendcount * sendElemSize,
-           recvcount * recvElemSize);
+    memcpy(((char*)recvbuf) + rdispls[comm_rank] * recvElemSize, 
+           ((char*)sendbuf) + sdispls[comm_rank] * sendElemSize,
+           recvcounts[comm_rank] * recvElemSize);
 
     for (int i = 0; i < comm_size; i++) {
         if (i != comm_rank) {
@@ -310,13 +341,6 @@ __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
     free(send_requests);
     free(recv_requests);
 
-    return MPI_SUCCESS;
-}
-__device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
-            const int sdispls[], MPI_Datatype sendtype,
-            void *recvbuf, const int recvcounts[],
-            const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm) {
-    NOT_IMPLEMENTED;
     return MPI_SUCCESS;
 }
 

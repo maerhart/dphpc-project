@@ -18,6 +18,7 @@
 #define stderr __gpu_stderr
 
 #define fprintf __gpu_fprintf
+#define fscanf __gpu_fscanf
 #define fflush __gpu_fflush
 #define fopen __gpu_fopen
 #define fclose __gpu_fclose

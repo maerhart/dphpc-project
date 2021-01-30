@@ -18,14 +18,21 @@ __device__ int __gpu_fprintf(__gpu_FILE * stream, const char * format, ...) {
     return res;
 }
 
+__device__ int __gpu_fscanf(__gpu_FILE *stream, const char *format, ...) {
+    NOT_IMPLEMENTED;
+    return 0;
+}
+
+
 __device__ int __gpu_fflush(__gpu_FILE */*__stream*/) {
     // nothing to do
     return 0;
 }
 
 __device__ __gpu_FILE *__gpu_fopen(const char *pathname, const char *mode) {
-    NOT_IMPLEMENTED;
-    return __gpu_stdout;
+    // TODO not implemented
+    // for now pretend that it is not possible to open any file
+    return nullptr;
 }
 
 __device__ int __gpu_fclose(__gpu_FILE *stream) {

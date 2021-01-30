@@ -45,7 +45,9 @@ void* copyArgsToUnifiedMemory(int argc, char** argv) {
  * Parse args related to gpumpi: everything after "---gpumpi"
  * Return new argc: everything after "---gpumpi"
  */
-int parseGPUMPIArgs(int argc, char** argv, int& blocksPerGrid, int& threadsPerBlock) {
+int parseGPUMPIArgs(int argc, char** argv, 
+    unsigned& blocksPerGrid, unsigned& threadsPerBlock, unsigned& stackSize, unsigned& heapSize) 
+{
     int trippleDashPosition = -1;
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "---gpumpi") == 0) {
@@ -65,13 +67,26 @@ int parseGPUMPIArgs(int argc, char** argv, int& blocksPerGrid, int& threadsPerBl
     cxxopts::Options options("GPU MPI", "GPU MPI");
 
     options.add_options()
-        ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<int>())
-        ("b,threadsPerBlock", "Threads per block", cxxopts::value<int>())
+        ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<unsigned>()->default_value("1"))
+        ("b,threadsPerBlock", "Threads per block", cxxopts::value<unsigned>()->default_value("1"))
+        ("s,stackSize", "Override stack size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("1024"))
+        ("p,heapSize", "Override heap size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("8388608"))
+        ("h,help", "Print help text")
         ;
 
+
     auto result = options.parse(gpumpi_argc, gpumpi_argv);
-    blocksPerGrid = result["blocksPerGrid"].as<int>();
-    threadsPerBlock = result["threadsPerBlock"].as<int>();
+
+    if (result.count("help"))
+    {
+        std::cout << options.help() << std::endl;
+        exit(0);
+    }
+
+    blocksPerGrid = result["blocksPerGrid"].as<unsigned>();
+    threadsPerBlock = result["threadsPerBlock"].as<unsigned>();
+    stackSize = result["stackSize"].as<unsigned>();
+    heapSize = result["heapSize"].as<unsigned>();
 
     return trippleDashPosition;
 }
@@ -98,15 +113,18 @@ int main(int argc, char* argv[]) {
     int deviceCount = 0;
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
 
-    // increase stack size (defaut is 1024)
-    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, 1024 * 16));
-    // increase heap size (default is 8388608)
-    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, size_t{8388608} * size_t{64}));
+    unsigned blocksPerGrid = 0;
+    unsigned threadsPerBlock = 0;
+    unsigned stackSize = 0;
+    unsigned heapSize = 0;
 
-    int blocksPerGrid = -1;
-    int threadsPerBlock = -1;
+    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize);
 
-    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock);
+    // increase stack size
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
+    // increase heap size
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize));
+
 
     // convert the argv array into memory inside the an UM allocated buffer
     void* argvInUnifiedMemory = copyArgsToUnifiedMemory(argcWithoutGPUMPI,argv);
@@ -159,38 +177,34 @@ int main(int argc, char* argv[]) {
         launchParamsList[i].stream = cudaStreams[i];
     }
 
+    cudaEvent_t kernelFinishEvent;
+    CUDA_CHECK(cudaEventCreate(&kernelFinishEvent));
+
     std::cerr << "GPUMPI: Starting kernel!" << std::endl;
     // here we actually call __gpu_main
     //CUDA_CHECK(cudaLaunchCooperativeKernelMultiDevice(launchParamsList.data(), deviceCount));
     for(int i = 0; i < deviceCount; i++) {
         CUDA_CHECK(cudaLaunchKernel((void*)__gpu_main_caller, blocksPerGrid, threadsPerBlock, params[i].data(), 0, cudaStreams[i]));
     }
+    CUDA_CHECK(cudaEventRecord(kernelFinishEvent));
+
     std::cerr << "GPUMPI: Processing messages from device threads" << std::endl;
 
-    std::set<int> unfinishedThreads;
-    for (int i = 0; i < sharedStateContext.numThreads; i++) {
-        unfinishedThreads.insert(i);
-    }
-
-    while (!unfinishedThreads.empty()) {
+    while (cudaEventQuery(kernelFinishEvent) == cudaErrorNotReady) {
         sharedState->deviceToHostCommunicator.processIncomingMessages([&](void* ptr, size_t size, int threadRank) {
             if (ptr == 0 && size == 0) {
-                int erased = unfinishedThreads.erase(threadRank);
-                assert(erased);
+                // nothing to do, this is notification that thread finished execution
             } else {
                 process_gpu_libc(ptr, size);
             } 
         });
     }
+    std::cerr << "GPUMPI: Kernel finished, stop processing messages from device threads" << std::endl;
 
-    std::cerr << "GPUMPI: Finishing kernel!" << std::endl;
-    // wait while all devices are finishing computations
-    for(int i = 0; i < deviceCount; i++) {
-        CUDA_CHECK(cudaSetDevice(i));
-        CUDA_CHECK(cudaDeviceSynchronize());
-    }
+    // make sure that everything is ok after kernel launch
+    CUDA_CHECK(cudaEventQuery(kernelFinishEvent));
 
-    std::cerr << "GPUMPI: Synchronized!" << std::endl;
+    std::cerr << "GPUMPI: Releasing resources" << std::endl;
 
     // release all resources
 

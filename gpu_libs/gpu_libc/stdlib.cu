@@ -42,8 +42,9 @@ __device__ int __gpu_rand(void) {
 __device__ char stub[] = "stub";
 
 __device__ char *__gpu_getenv(const char *name) {
-    NOT_IMPLEMENTED;
-    return stub;
+    // TODO return proper thing instead
+    // for now pretend that there is no env vars
+    return nullptr;
 }
 
 __device__ void __gpu_exit(int) {
