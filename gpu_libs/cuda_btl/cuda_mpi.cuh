@@ -296,6 +296,47 @@ __device__ void progressAllocatedSend(PendingOperation& send);
 __device__ void progressSyncedSend(PendingOperation& send);
 __device__ void progressCompletedSend(PendingOperation& send);
 
+struct GlobalVarsStorage {
+
+    struct Entry {
+        const void* key = nullptr;
+        void* value = nullptr;
+    };
+
+    __device__ ~GlobalVarsStorage() {
+        for (int i = 0; i < simpleSet.size(); i++) {
+            free(simpleSet[i].value);
+        }
+    }
+
+    __device__ int find(const void* ptr) {
+        for (int i = 0; i < simpleSet.size(); i++) {
+            if (simpleSet[i].key == ptr) {
+                return i;
+            }
+        }
+        return -1; // not found
+    }
+
+    __device__ void* getValue(const void* ptr, size_t size) {
+        int idx = find(ptr);
+        if (idx < 0) {
+            // not found
+            simpleSet.resize(simpleSet.size() + 1);
+            idx = simpleSet.size() - 1;
+            simpleSet[idx].key = ptr;
+            void* copyPtr = malloc(size);
+            memcpy(copyPtr, ptr, size);
+            simpleSet[idx].value = copyPtr;
+        }
+        return simpleSet[idx].value;
+    }
+
+private:
+    // TODO inefficient, refactor later
+    DeviceVector<Entry> simpleSet;
+};
+
 struct ThreadPrivateState {
 
     struct Context {
@@ -341,6 +382,8 @@ private:
 public:
     int unusedCommunicationContext;
     curandState_t rand_state;
+    
+    GlobalVarsStorage globalVarsStorage;
 };
 
 struct MessageDescriptor {

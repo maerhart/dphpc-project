@@ -135,3 +135,4 @@ __device__ int MPI_Request_free(MPI_Request *request);
 #define MPI_STATUSES_IGNORE ((MPI_Status*)nullptr)
 #define MPI_STATUS_IGNORE ((MPI_Status*)nullptr)
 
+

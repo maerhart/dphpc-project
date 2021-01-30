@@ -1,6 +1,10 @@
 find_package(MPI REQUIRED CXX)
 
-add_library(libc_processor libc_processor.cu device_host_comm.cu)
+add_library(libc_processor
+    libc_processor.cu
+    device_host_comm.cu
+    global_vars.cu
+    )
 target_link_libraries(libc_processor PRIVATE common cuda_btl)
 
 add_library(gpu_main main.cu)

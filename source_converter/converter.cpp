@@ -57,6 +57,20 @@ public :
                 mRewriter.InsertTextBefore(ice->getSourceRange().getBegin(), "(" + ice->getType().getAsString() + ")");
             }
         }
+        if (const DeclRefExpr* refToGlobalVar = Result.Nodes.getNodeAs<DeclRefExpr>("refToGlobalVar")) {
+            // WARNING! for some reason the same refToGlobalVar can be matched multiple times,
+            // it could be bug in libTooling or some feature that I miss.
+            // It happens for references to const global variables in the global scope to define other global variables.
+            
+            // enclose access by __gpu_global( ... ) annotation
+            SourceManager& srcMgr = mRewriter.getSourceMgr();
+            SourceRange originalSrcRange = refToGlobalVar->getSourceRange();
+            SourceLocation beginLoc = srcMgr.getSpellingLoc(originalSrcRange.getBegin());
+            SourceLocation endLoc = srcMgr.getSpellingLoc(originalSrcRange.getEnd());
+            //llvm::errs() << refToGlobalVar << " source location: " << originalSrcRange.printToString(srcMgr) << " " << beginLoc.printToString(srcMgr) << "," << endLoc.printToString(srcMgr) << "\n";
+            mRewriter.InsertTextBefore(beginLoc, "__gpu_global(");
+            mRewriter.InsertTextAfterToken(endLoc, ")");
+        }
     }
 private:
     Rewriter& mRewriter;
@@ -64,7 +78,9 @@ private:
 
 class MyASTConsumer : public ASTConsumer {
 public:
-    MyASTConsumer(Rewriter &rewriter) : mFuncConverter(rewriter) {
+    MyASTConsumer(Rewriter &rewriter)
+        : mFuncConverter(rewriter) 
+    {
         // Match only explcit function declarations (that are written by user, but not
         // added with compiler). This helps to avoid looking at builtin functions.
         // Since implicit constructors in C++ also require __device__ annotation,
@@ -74,11 +90,14 @@ public:
         mMatcher.addMatcher(varDecl(hasGlobalStorage(), unless(isStaticLocal())).bind("globalVar"), &mFuncConverter);
 
         mMatcher.addMatcher(implicitCastExpr().bind("implicitCast"), &mFuncConverter);
+
+        mMatcher.addMatcher(declRefExpr(to(varDecl(hasGlobalStorage()))).bind("refToGlobalVar"), &mFuncConverter);
     }
 
     void HandleTranslationUnit(ASTContext &Context) override {
         // Run the matchers when we have the whole TU parsed.
         mMatcher.matchAST(Context);
+
     }
 
 private:
@@ -107,6 +126,10 @@ public:
                 //llvm::errs() << "Skip " << fileName << "\n";
                 continue; // skip system headers
             }
+
+            // add headers to support global variable handling
+            SourceLocation fileStart = mRewriter.getSourceMgr().translateFileLineCol(fileEntry, /*line*/1, /*column*/1);
+            mRewriter.InsertTextBefore(fileStart, "#include \"global_vars.cuh\"\n");
 
             llvm::errs() << "Trying to write " << fileName << " : " << fileEntry->tryGetRealPathName() << "\n";
 
