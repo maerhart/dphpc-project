@@ -309,7 +309,7 @@ struct GlobalVarsStorage {
         }
     }
 
-    __device__ int find(const void* ptr) {
+    __device__ int find_by_key(const void* ptr) {
         for (int i = 0; i < simpleSet.size(); i++) {
             if (simpleSet[i].key == ptr) {
                 return i;
@@ -318,8 +318,23 @@ struct GlobalVarsStorage {
         return -1; // not found
     }
 
+    __device__ int find_by_value(const void* ptr) {
+        for (int i = 0; i < simpleSet.size(); i++) {
+            if (simpleSet[i].value == ptr) {
+                return i;
+            }
+        }
+        return -1; // not found
+    }
+
     __device__ void* getValue(const void* ptr, size_t size) {
-        int idx = find(ptr);
+        // first we check is it an adress that is already converted
+        int idx = find_by_value(ptr);
+        if (idx >= 0) return simpleSet[idx].value;
+
+        // it is real global variable, so we find a mapping for it
+        // and create new mapping if it is not exists
+        idx = find_by_key(ptr);
         if (idx < 0) {
             // not found
             simpleSet.resize(simpleSet.size() + 1);

@@ -10,6 +10,8 @@ int *g3[3] = {NULL, NULL, NULL}, g4[2][3] = {{1,2,3},{4,5,6}};
 
 #define FAIL_IF(x) do { if (x) { printf("error %s:%d %s!\n", __FILE__, __LINE__, #x); error = 1; } } while (0)
 
+#define MACRO_g2 g2 
+
 int main() {
     MPI_Init(0, 0);
 
@@ -22,8 +24,8 @@ int main() {
     FAIL_IF(g2[1] != -2);
 
     g1 = rank;
-    g2[0] = rank + 1;
-    g2[1] = rank + 2;
+    MACRO_g2[0] = rank + 1;
+    MACRO_g2[1] = rank + 2;
 
     g3[2] = ((int*)NULL) + rank + 3;
     g4[1][1] = rank + 4;

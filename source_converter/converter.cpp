@@ -68,7 +68,7 @@ public :
             SourceLocation beginLoc = srcMgr.getSpellingLoc(originalSrcRange.getBegin());
             SourceLocation endLoc = srcMgr.getSpellingLoc(originalSrcRange.getEnd());
             //llvm::errs() << refToGlobalVar << " source location: " << originalSrcRange.printToString(srcMgr) << " " << beginLoc.printToString(srcMgr) << "," << endLoc.printToString(srcMgr) << "\n";
-            mRewriter.InsertTextBefore(beginLoc, "__gpu_global(");
+            mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
             mRewriter.InsertTextAfterToken(endLoc, ")");
         }
     }
