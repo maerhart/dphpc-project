@@ -190,6 +190,9 @@ if __name__ == '__main__':
         include({script_dir}/../gpu_libs-exports.cmake)
 
         set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+
+        # create library target for global variable definitions
+        add_library(gpumpi_global_vars gpumpi_globals.cu)
     """)
 
     for f in all_sources:
@@ -200,7 +203,7 @@ if __name__ == '__main__':
 
         cmakelists += textwrap.dedent(f"""
             add_{target_type}(target_{escaped_name} {f}.cu)
-            target_link_libraries(target_{escaped_name} PRIVATE gpu_libs)
+            target_link_libraries(target_{escaped_name} PRIVATE gpu_libs gpumpi_global_vars)
         """)
 
         if includes:

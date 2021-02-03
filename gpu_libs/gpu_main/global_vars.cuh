@@ -1,13 +1,25 @@
 #pragma once
 
-namespace CudaMPI {
-__device__ void* translateGlobalVar(const void* ptr, size_t size);
-} // namespace
+// assigned from converter
+extern __device__ int __gpu_num_globals;
+extern __device__ void* __gpu_global_ptrs[];
+extern __device__ int __gpu_global_size[];
 
-template <typename T>
-constexpr __device__ T& __gpu_global(T& x) {
-    // If we are inside device code, then we use <pointer address, current rank> as a key
-    // in the internal mapping to actual value.
-    // We need to know size of type to get the correct offset in array of per-thread global variable copies.
-    return *(T*) CudaMPI::translateGlobalVar(&x, sizeof(x));
+// assigned from main.cu
+extern __device__ void** __gpu_global_vars;
+
+template <int Idx, typename T>
+__device__ T& __gpu_global(T& x) {
+    int rank = threadIdx.x + blockDim.x * blockIdx.x;
+    return *(T*)(__gpu_global_vars[Idx + rank * __gpu_num_globals]);
+}
+
+template <int Idx, typename T>
+__device__ void __gpu_init_global(T& x) {
+    int rank = threadIdx.x + blockDim.x * blockIdx.x;
+    void*& ptr = __gpu_global_vars[Idx + rank * __gpu_num_globals];
+    if (!ptr) {
+        ptr = malloc(sizeof(x));
+        memcpy(ptr, &x, sizeof(x));
+    }
 }

@@ -8,10 +8,71 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <map>
+#include <fstream>
+
 using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace llvm;
+
+/* code below is copied from "clang/lib/ARCMigrate/Transforms.h" */
+ 
+/// \arg Loc is the end of a statement range. This returns the location
+/// of the semicolon following the statement.
+/// If no semicolon is found or the location is inside a macro, the returned
+/// source location will be invalid.
+SourceLocation findSemiAfterLocation(SourceLocation loc,
+                                            ASTContext &Ctx,
+                                            bool IsDecl) {
+  SourceManager &SM = Ctx.getSourceManager();
+  if (loc.isMacroID()) {
+    if (!Lexer::isAtEndOfMacroExpansion(loc, SM, Ctx.getLangOpts(), &loc))
+      return SourceLocation();
+  }
+  loc = Lexer::getLocForEndOfToken(loc, /*Offset=*/0, SM, Ctx.getLangOpts());
+
+  // Break down the source location.
+  std::pair<FileID, unsigned> locInfo = SM.getDecomposedLoc(loc);
+
+  // Try to load the file buffer.
+  bool invalidTemp = false;
+  StringRef file = SM.getBufferData(locInfo.first, &invalidTemp);
+  if (invalidTemp)
+    return SourceLocation();
+
+  const char *tokenBegin = file.data() + locInfo.second;
+
+  // Lex from the start of the given location.
+  Lexer lexer(SM.getLocForStartOfFile(locInfo.first),
+              Ctx.getLangOpts(),
+              file.begin(), tokenBegin, file.end());
+  Token tok;
+  lexer.LexFromRawLexer(tok);
+  if (tok.isNot(tok::semi)) {
+    if (!IsDecl)
+      return SourceLocation();
+    // Declaration may be followed with other tokens; such as an __attribute,
+    // before ending with a semicolon.
+    return findSemiAfterLocation(tok.getLocation(), Ctx, /*IsDecl*/true);
+  }
+
+  return tok.getLocation();
+}
+
+/// 'Loc' is the end of a statement range. This returns the location
+/// immediately after the semicolon following the statement.
+/// If no semicolon is found or the location is inside a macro, the returned
+/// source location will be invalid.
+SourceLocation findLocationAfterSemi(SourceLocation loc,
+                                            ASTContext &Ctx, bool IsDecl) {
+  SourceLocation SemiLoc = findSemiAfterLocation(loc, Ctx, IsDecl);
+  if (SemiLoc.isInvalid())
+    return SourceLocation();
+  return SemiLoc.getLocWithOffset(1);
+}
+
+/* code above is copied from "clang/lib/ARCMigrate/Transforms.h" */
 
 
 // Apply a custom category to all command-line options so that they are the
@@ -67,12 +128,91 @@ public :
             SourceRange originalSrcRange = refToGlobalVar->getSourceRange();
             SourceLocation beginLoc = srcMgr.getSpellingLoc(originalSrcRange.getBegin());
             SourceLocation endLoc = srcMgr.getSpellingLoc(originalSrcRange.getEnd());
-            //llvm::errs() << refToGlobalVar << " source location: " << originalSrcRange.printToString(srcMgr) << " " << beginLoc.printToString(srcMgr) << "," << endLoc.printToString(srcMgr) << "\n";
-            mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
-            mRewriter.InsertTextAfterToken(endLoc, ")");
+            
+            // check that global vars comes from user header, not system header
+            if (!srcMgr.isInSystemHeader(beginLoc)) {
+                //llvm::errs() << refToGlobalVar << " source location: " << originalSrcRange.printToString(srcMgr) << " " << beginLoc.printToString(srcMgr) << "," << endLoc.printToString(srcMgr) << "\n";
+                std::string text = mRewriter.getRewrittenText(SourceRange(beginLoc, endLoc));
+                // make sure that such text is not already added, for example, inside the macro
+                if (text.rfind("__gpu_global") != 0) { // search for prefix
+                    const VarDecl* vd = dynamic_cast<const VarDecl*>(refToGlobalVar->getDecl());
+                    assert(vd);
+                    int vdid = getVarDeclId(vd);
+
+                    // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
+                    mRewriter.InsertTextAfter(beginLoc, "__gpu_global<" + std::to_string(vdid) + ">(");
+                    mRewriter.InsertTextAfterToken(endLoc, ")");
+                }
+            }
         }
     }
+    void emitGlobalVars() {
+        std::ofstream fsc("gpumpi_globals.cu");
+
+        assert(fsc.is_open());
+
+        fsc << "__device__ int __gpu_num_globals = " + std::to_string(declMap.size()) + ";\n";
+        fsc << "__device__ char *__gpu_global_ptrs[" + std::to_string(declMap.size()) + "] = {0};\n";
+        fsc << "__device__ int __gpu_global_size[" + std::to_string(declMap.size()) + "] = {0};\n";
+
+        for (auto pair : declMap) {
+            const VarDecl* vd = pair.first;
+            int idx = pair.second;
+            std::string idx_str = std::to_string(idx);
+            if (!vd->isStaticLocal()) {
+                std::string initFuncName = "__gpu_init_global_" + idx_str;
+                fsc << "__device__ void " + initFuncName + "();\n";
+            }
+        }
+
+        fsc << "__device__ void __gpu_init_global_ptrs() {\n";
+        for (auto pair : declMap) {
+            const VarDecl* vd = pair.first;
+            int idx = pair.second;
+            std::string idx_str = std::to_string(idx);
+
+            SourceLocation globalVarDeclEnd = findLocationAfterSemi(vd->getEndLoc(), vd->getASTContext(), true); 
+            std::string globalVarName = vd->getNameAsString();
+            //std::string typeStr = QualType::getAsString(vd->getType().split(), PrintingPolicy{{}}); // may be useful later
+
+
+            if (vd->isStaticLocal()) {
+                mRewriter.InsertText(globalVarDeclEnd, "\n__gpu_init_global<" + idx_str + ">(" + globalVarName + ");\n");
+            } else {
+                std::string initFuncName = "__gpu_init_global_" + idx_str;
+
+                fsc << initFuncName + "();\n";
+
+                mRewriter.InsertText(globalVarDeclEnd, 
+                    "\n__device__ void " + initFuncName + "() {\n"
+                    "__gpu_global_ptrs[" + idx_str + "] = &" + globalVarName + ";\n"
+                    "__gpu_global_size[" + idx_str + "] = sizeof(" + globalVarName + ");\n"
+                    "}\n");
+            }
+            
+        }
+
+        fsc << "}\n";
+    }
+
 private:
+    int getVarDeclId(const VarDecl* vd) {
+        assert(vd);
+        vd = vd->getCanonicalDecl();
+
+        // we will use pointer to vd to uniquely identify var to which we refer
+        auto it = declMap.find(vd);
+        if (it == declMap.end()) {
+            bool success = false;
+            std::tie(it, success) = declMap.insert(std::make_pair(vd, int(declMap.size())));
+            assert(success);
+        }
+
+        int varDeclId = it->second;
+        return varDeclId;
+    }
+
+    std::map<const VarDecl*, int> declMap;
     Rewriter& mRewriter;
 };
 
@@ -97,7 +237,9 @@ public:
     void HandleTranslationUnit(ASTContext &Context) override {
         // Run the matchers when we have the whole TU parsed.
         mMatcher.matchAST(Context);
-
+        
+        // write file with initialization of detected global variables
+        mFuncConverter.emitGlobalVars();
     }
 
 private:

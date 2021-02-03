@@ -19,6 +19,7 @@
 #include "cuda_mpi.cuh"
 
 #include "libc_processor.cuh"
+#include "global_vars.cuh"
 
 void* copyArgsToUnifiedMemory(int argc, char** argv) {
     // argv is a set of "pointers" to "strings"
@@ -92,6 +93,22 @@ int parseGPUMPIArgs(int argc, char** argv,
 }
 
 extern __device__ int __gpu_main(int argc, char* argv[]);
+extern __device__ void __gpu_init_global_ptrs();
+
+__device__ void** __gpu_global_vars = nullptr;
+__device__ void initializeGlobalVars() {
+    int j = CudaMPI::sharedState().gridRank();
+    for (int i = 0; i < __gpu_num_globals; i++) {
+        if (__gpu_global_ptrs[i]) {
+            __gpu_global_vars[i + j * __gpu_num_globals] = (void*) malloc(__gpu_global_size[i]);
+            memcpy(__gpu_global_vars[i + j * __gpu_num_globals], __gpu_global_ptrs[i], __gpu_global_size[i]);
+        } else {
+            // static scoped global variables initialized at the point of definition
+            __gpu_global_vars[i + j * __gpu_num_globals] = nullptr;
+        }
+    }
+    // I never free this memory, but it is not required since global variables should live for entire program live
+}
 
 __global__ void __gpu_main_caller(int argc, char* argv[],
                                     CudaMPI::SharedState* sharedState,
@@ -99,6 +116,14 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
 {
     CudaMPI::setSharedState(sharedState);
     CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
+
+    // initialize global variables
+    if (CudaMPI::sharedState().gridRank() == 0) {
+        __gpu_init_global_ptrs();
+        __gpu_global_vars = (void**) malloc(CudaMPI::sharedState().gridSize() * __gpu_num_globals * sizeof(void*));
+    }
+    CudaMPI::sharedState().gridBarrier();
+    initializeGlobalVars();
 
     int returnValue = __gpu_main(argc, argv);
     if (returnValue != 0) {
