@@ -7,24 +7,20 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
 using namespace llvm;
 
+static cl::OptionCategory ConverterCategory("GPU MPI converter options");
 
-// Apply a custom category to all command-line options so that they are the
-// only ones displayed.
-static cl::OptionCategory MyToolCategory("my-tool options");
-
-// CommonOptionsParser declares HelpMessage with a description of the common
-// command-line options related to the compilation database and input files.
-// It's nice to have this help message in all tools.
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 
-// A help message for this specific tool can be added afterwards.
-static cl::extrahelp MoreHelp("\nMore help text...\n");
+static cl::extrahelp MoreHelp("\nMore help...\n");
+
+const char* GPU_MPI_PROJECT = "GPU_MPI_PROJECT";
 
 class FuncConverter : public MatchFinder::MatchCallback {
 public :
@@ -34,7 +30,7 @@ public :
     virtual void run(const MatchFinder::MatchResult &Result) {
         if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("func")) {
             if (func->isMain()) {
-                llvm::errs() << "Detected main function\n";
+                //llvm::errs() << "Detected main function\n";
 
                 mRewriter.ReplaceText(func->getNameInfo().getSourceRange(), "__gpu_main");
 
@@ -108,6 +104,9 @@ private:
 class MyFrontendAction : public ASTFrontendAction {
 public:
     void EndSourceFileAction() override {
+        // create directory to make a copy of source tree with device annotations
+        
+
         for (auto I = mRewriter.buffer_begin(), E = mRewriter.buffer_end(); I != E; ++I) {
             FileID fileID = I->first;
             RewriteBuffer& rb = I->second;
@@ -120,16 +119,23 @@ public:
             assert(fileEntry);
             StringRef fileName = fileEntry->getName();
 
-            // silly detection of system headers:
-            // if name starts with '/' then it is system header
-            if (fileName[0] == '/') {
-                //llvm::errs() << "Skip " << fileName << "\n";
-                continue; // skip system headers
-            }
+            // detect file location, if it is outside project dir, skip its processing 
+            char* projectDirC = getenv(GPU_MPI_PROJECT);
+            assert(projectDirC);
+            projectDirC = realpath(projectDirC, NULL);
+            assert(projectDirC);
+            std::string projectDir(projectDirC);
+            free(projectDirC);
 
-            // add headers to support global variable handling
-            SourceLocation fileStart = mRewriter.getSourceMgr().translateFileLineCol(fileEntry, /*line*/1, /*column*/1);
-            mRewriter.InsertTextBefore(fileStart, "#include \"global_vars.cuh\"\n");
+            char* filePathC = realpath(fileName.str().c_str(), NULL);
+            assert(filePathC);
+            std::string filePath(filePathC);
+            free(filePathC);
+            
+            if (0 != filePath.rfind(projectDir, 0)) {
+                //llvm::errs() << "Skip " << fileName << " because it is not in project dir\n";
+                continue;
+            }
 
             llvm::errs() << "Trying to write " << fileName << " : " << fileEntry->tryGetRealPathName() << "\n";
 
@@ -159,20 +165,36 @@ private:
 
 #define STR2(x) #x
 #define STR(x) STR2(x)
-const char* extra_arg = "-extra-arg=-I" STR(LLVM_BUILTIN_HEADERS);
+const char* isystem = "-isystem";
+const char* builtin_headers = STR(LLVM_BUILTIN_HEADERS);
 #undef STR
 #undef STR2
 
 int main(int argc, const char **argv) {
-    int adj_argc = argc + 1;
-    std::vector<const char*> adj_argv(adj_argc);
-    adj_argv[0] = argv[0];
-    adj_argv[1] = extra_arg;
-    for (int i = 1; i < argc; i++) {
-        adj_argv[i + 1] = argv[i];
+    // add system headers from local llvm installation
+    std::vector<const char*> adj_argv;
+    for (int i = 0; i < argc; i++) {
+        adj_argv.push_back(argv[i]);
     }
+    adj_argv.push_back(isystem);
+    adj_argv.push_back(builtin_headers);
+    int adj_argc = adj_argv.size();
     
-    CommonOptionsParser OptionsParser(adj_argc, adj_argv.data(), MyToolCategory);
+    // check that project dir is specified before proceeding
+    char* projectDir = getenv(GPU_MPI_PROJECT);
+    if (!projectDir) {
+        llvm::errs() << "ERROR! " << GPU_MPI_PROJECT << " environment variable is not specified. You should specify it before running converter!\n";
+        return 1;
+    }
+    char* projectDirRealPath = realpath(projectDir, NULL);
+    if (!projectDirRealPath) {
+        llvm::errs() << "ERROR! " << GPU_MPI_PROJECT << " doesn't point to existing file!\n";
+        return 1;
+    }
+    free(projectDirRealPath);
+
+
+    CommonOptionsParser OptionsParser(adj_argc, adj_argv.data(), ConverterCategory);
     ClangTool Tool(OptionsParser.getCompilations(),
                    OptionsParser.getSourcePathList());
     return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
