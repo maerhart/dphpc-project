@@ -142,22 +142,27 @@ if __name__ == '__main__':
     # if there are no compilation_sources, then probably compiler wrapper is used for linking only, so we will not run converter on it
     if compilation_sources:
 
+        tu_header_deps = get_header_depenency_lists(compilation_params)
+
+        # Before running converter, we manually create copies of files with ".cu" or ".cuh" suffix, because
+        # when converter doesn't make any modifications to the file, it just skips it.
+        for tu_dep in tu_header_deps:
+            source_file, headers = tu_dep
+
+            new_source = convert_source_name(source_file)
+            shutil.copyfile(source_file, new_source)
+
+            for header in headers:
+                new_header = header + '.cuh'
+                shutil.copyfile(header, new_header)
+
         # run code converter
         command = [converter_path, *compilation_sources, "--", *compilation_args, *mpi_compile_flags]
         #print("command:", " ".join(command))
         subprocess.run(command, check=True)
     
-        tu_header_deps = get_header_depenency_lists(compilation_params)
-
         for tu_dep in tu_header_deps:
             source_file, headers = tu_dep
-
-            # some headers may not exist, because converter didn't make any modifications to them
-            # we have to make copy of such headers with '.cuh' suffix for consistency
-            for header in headers:
-                expected_name = header + '.cuh'
-                if not os.path.exists(expected_name):
-                    shutil.copyfile(header, expected_name)
 
             for file_name in (source_file, *headers):
                 # 1. for source files replace filename extension by '.cu'
@@ -186,10 +191,10 @@ if __name__ == '__main__':
     if "@CMAKE_BUILD_TYPE@" == "Debug":
         gpu_arch_flags += '@CMAKE_CUDA_FLAGS_DEBUG@'.split()
 
-    print('CMAKE_CUDA_FLAGS', gpu_arch_flags)
+    #print('CMAKE_CUDA_FLAGS', gpu_arch_flags)
 
     command = ['nvcc', '-rdc=true', *gpu_arch_flags, *cuda_sources, *cuda_args, *gpu_mpi_libs, *gpu_mpi_include_args]
-    print("compile command:", " ".join(command))
+    #print("compile command:", " ".join(command))
     subprocess.run(command, check=True)
     
     

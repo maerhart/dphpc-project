@@ -167,6 +167,7 @@ public:
 
             std::error_code error_code;
             raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
+            assert(!outFile.has_error());
             mRewriter.getEditBuffer(fileID).write(outFile);
         }
     }
