@@ -1,5 +1,7 @@
+MPICC ?= mpicc
+
 all:
-	mpicc global_var.c -o global_var
+	$(MPICC) global_var.c -o global_var
 
 clean:
 	rm -f global_var

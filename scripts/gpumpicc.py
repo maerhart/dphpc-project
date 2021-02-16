@@ -7,11 +7,11 @@ import re
 import shutil
 from typing import List, Tuple
 
+source_extensions = (".c", ".cpp", ".cxx")
+
 def detect_sources_and_args(comilation_params: List[str]) -> Tuple[List[str], List[str]]:
     compilation_sources = []
     compilation_args = []
-
-    source_extensions = (".c", ".cpp", ".cxx")
 
     for arg in compilation_params:
         if arg.lower().endswith(source_extensions):
@@ -43,10 +43,11 @@ def cuda_compatible_compilation_args(compilation_args: List[str]) -> List[str]:
     single_word_args = ('-c')
     double_word_args = ('-o')
 
-    for arg in compilation_args:
+    args_iter = iter(compilation_args)
+    for arg in args_iter:
         if arg in valid_prefixes:
             prefix = arg
-            path = next(compilation_args)
+            path = next(args_iter)
             clean_args.append(prefix + path)
         elif arg.startswith(valid_prefixes):
             clean_args.append(arg)
@@ -54,7 +55,7 @@ def cuda_compatible_compilation_args(compilation_args: List[str]) -> List[str]:
             clean_args.append(arg)
         elif arg in double_word_args:
             clean_args.append(arg)
-            clean_args.append(next(compilation_args))
+            clean_args.append(next(args_iter))
         elif arg.endswith(".o"):
             clean_args.append(arg)
 
@@ -64,10 +65,11 @@ def cuda_compatible_compilation_args(compilation_args: List[str]) -> List[str]:
 def get_header_depenency_lists(comilation_params: List[str]) -> List[Tuple[str, List[str]]]:
     # remove -o option capture result from standard output
     fixed_params = []
-    for param in compilation_params:
+    comp_params_iter = iter(compilation_params)
+    for param in comp_params_iter:
         if param == '-o':
             # skip parameter following '-o'
-            next(compilation_params) 
+            next(comp_params_iter) 
             continue
 
         fixed_params.append(param)
@@ -97,6 +99,17 @@ def get_header_depenency_lists(comilation_params: List[str]) -> List[Tuple[str, 
     return tu_header_deps
 
 
+def convert_source_name(name: str) -> str:
+    """ change suffix of source file to 'cu'. For example: foo.c -> foo.cu """
+
+    assert name.lower().endswith(source_extensions)
+    
+    name_parts = name.split(".")
+    name_parts[-1] = 'cu'
+
+    return ".".join(name_parts)
+
+
 if __name__ == '__main__':
     
     scripts_dir = os.path.abspath(os.path.dirname(__file__))
@@ -107,6 +120,25 @@ if __name__ == '__main__':
 
     mpi_compile_flags, mpi_link_flags = get_mpi_flags()
 
+    # TODO: ugly: location of static libraries is controlled by cmake and can be changed in newer cmake versions
+    gpu_mpi_libs: List[str] = [ 
+        scripts_dir + "/../gpu_libs/gpu_mpi/libgpu_mpi.a",
+        scripts_dir + "/../gpu_libs/cuda_btl/libcuda_btl.a",
+        scripts_dir + "/../gpu_libs/gpu_libc/libgpu_libc.a",
+        scripts_dir + "/../gpu_libs/gpu_main/libgpu_main.a",
+        scripts_dir + "/../gpu_libs/gpu_main/liblibc_processor.a",
+        scripts_dir + "/../common/libcommon.a",
+    ]
+
+    # WARNING: will not work if source dir is moved or deleted
+    gpu_mpi_headers: List[str] = [ 
+        "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_mpi",
+        "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_libc",
+        "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_main",
+    ]
+
+    gpu_mpi_include_args: List[str] = ['-I' + h for h in gpu_mpi_headers]
+
     # if there are no compilation_sources, then probably compiler wrapper is used for linking only, so we will not run converter on it
     if compilation_sources:
 
@@ -115,7 +147,6 @@ if __name__ == '__main__':
         #print("command:", " ".join(command))
         subprocess.run(command, check=True)
     
-        # add .cuh suffix to #include directives
         tu_header_deps = get_header_depenency_lists(compilation_params)
 
         for tu_dep in tu_header_deps:
@@ -129,22 +160,36 @@ if __name__ == '__main__':
                     shutil.copyfile(header, expected_name)
 
             for file_name in (source_file, *headers):
+                # 1. for source files replace filename extension by '.cu'
+                # it is required because object file will have the same name with .cu replaced by .o
+                # so existing builds will not break due to name changes
+                # 2. for headers append '.cuh' to it without removing anything
+                # it is required to simplify providing our own headers instead of standard ones
                 if file_name == source_file:
-                    cu_file_name = file_name + '.cu'
+                    cu_file_name = convert_source_name(file_name)
                 else:
                     cu_file_name = file_name + '.cuh'
 
+                # add .cuh suffix to #include directives
                 with open(cu_file_name, 'r') as in_file:
                     text = re.sub('#include ([<"])(.*)([">])', '#include \g<1>\g<2>.cuh\g<3>', in_file.read())
                     text = re.sub('\.cuh\.cuh', '.cuh', text) # fixes double addition of '.cuh' suffix if we already processed this file
                 with open(cu_file_name, 'w') as out_file:
                     out_file.write(text)
 
-    cuda_sources = [s + ".cu" for s in compilation_sources]
+    cuda_sources = [convert_source_name(s) for s in compilation_sources]
     cuda_args = cuda_compatible_compilation_args(compilation_args)
 
-    command = ['nvcc', *cuda_sources, *cuda_args]
-    print("command:", " ".join(command))
+    gpu_arch_flags = '@CMAKE_CUDA_FLAGS@'.split() # pass gpu arch
+
+    # pass debug compile flags if they present
+    if "@CMAKE_BUILD_TYPE@" == "Debug":
+        gpu_arch_flags += '@CMAKE_CUDA_FLAGS_DEBUG@'.split()
+
+    print('CMAKE_CUDA_FLAGS', gpu_arch_flags)
+
+    command = ['nvcc', '-rdc=true', *gpu_arch_flags, *cuda_sources, *cuda_args, *gpu_mpi_libs, *gpu_mpi_include_args]
+    print("compile command:", " ".join(command))
     subprocess.run(command, check=True)
     
     

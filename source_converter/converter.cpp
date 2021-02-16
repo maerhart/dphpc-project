@@ -8,6 +8,7 @@
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include <clang/AST/Decl.h>
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -67,6 +68,12 @@ public :
             mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
             mRewriter.InsertTextAfterToken(endLoc, ")");
         }
+        if (const DeclRefExpr* refClassTokenDecl = Result.Nodes.getNodeAs<DeclRefExpr>("refClassTokenDecl")) {
+            mRewriter.InsertText(refClassTokenDecl->getSourceRange().getBegin(), "__decl_");
+        }
+        if (const NamedDecl* classTokenDecl = Result.Nodes.getNodeAs<NamedDecl>("classTokenDecl")) {
+            mRewriter.InsertText(classTokenDecl->getLocation(), "__decl_");
+        }
     }
 private:
     Rewriter& mRewriter;
@@ -88,6 +95,11 @@ public:
         mMatcher.addMatcher(implicitCastExpr().bind("implicitCast"), &mFuncConverter);
 
         mMatcher.addMatcher(declRefExpr(to(varDecl(hasGlobalStorage()))).bind("refToGlobalVar"), &mFuncConverter);
+
+        mMatcher.addMatcher(declRefExpr(to(varDecl(hasGlobalStorage()))).bind("refToGlobalVar"), &mFuncConverter);
+
+        mMatcher.addMatcher(declRefExpr(to(namedDecl(hasName("class")))).bind("refClassTokenDecl"), &mFuncConverter);
+        mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
     }
 
     void HandleTranslationUnit(ASTContext &Context) override {
@@ -137,17 +149,24 @@ public:
                 continue;
             }
 
+            // add headers to support global variable handling
+            SourceLocation fileStart = mRewriter.getSourceMgr().translateFileLineCol(fileEntry, /*line*/1, /*column*/1);
+            mRewriter.InsertTextBefore(fileStart, "#include \"global_vars.cuh\"\n"); // this header required to make __gpu_global function available in user code
+
             llvm::errs() << "Trying to write " << fileName << " : " << fileEntry->tryGetRealPathName() << "\n";
 
-            std::string fileExtension;
+            std::string newFileName;
             if (fileID == mRewriter.getSourceMgr().getMainFileID()) {
-                fileExtension = ".cu";
+                size_t lastDotIdx = fileName.rfind(".");
+                assert(lastDotIdx != std::string::npos);
+                std::string fileNameBase = fileName.str().substr(0, lastDotIdx);
+                newFileName = fileNameBase + ".cu";
             } else {
-                fileExtension = ".cuh";
+                newFileName = fileName.str() + ".cuh";
             }
 
             std::error_code error_code;
-            raw_fd_ostream outFile((fileName + fileExtension).str(), error_code, llvm::sys::fs::OF_None);
+            raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
             mRewriter.getEditBuffer(fileID).write(outFile);
         }
     }

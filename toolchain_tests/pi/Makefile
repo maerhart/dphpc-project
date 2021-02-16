@@ -1,5 +1,7 @@
+MPICC ?= mpicc
+
 all:
-	mpicc cpi.c -o pi
+	$(MPICC) cpi.c -o pi
 
 clean:
 	rm -f pi

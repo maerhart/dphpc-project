@@ -4,8 +4,10 @@ scriptdir=$(readlink -f $(dirname "$0"))
 
 cd "$scriptdir"
 
-"$scriptdir/../../scripts/convert_and_build.sh"
+export GPU_MPI_PROJECT=$(readlink -f .)
+export MPICC=../../scripts/gpumpicc.py
 
-binary=$(find "$scriptdir/gpumpi_build" -name 'target_*_cpi_c')
+make
 
-"$binary" ---gpumpi -g 4 -b 1 -s 8192
+./pi ---gpumpi -g 4 -b 1 -s 8192
+

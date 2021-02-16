@@ -3,7 +3,7 @@
 // functions on the GPU should use gpu_mpi instead.
 
 #include <cuda.h>
-#include <mpi.h>
+//#include <mpi.h>
 
 #include <stdio.h>
 
@@ -108,7 +108,7 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
 
 int main(int argc, char* argv[]) {
 
-    MPI_CHECK(MPI_Init(&argc, &argv));
+    //MPI_CHECK(MPI_Init(&argc, &argv));
 
     int deviceCount = 0;
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
 
     CUDA_CHECK(cudaFree(argvInUnifiedMemory));
 
-    MPI_CHECK(MPI_Finalize());
+    //MPI_CHECK(MPI_Finalize());
 
     std::cerr << "GPUMPI: MPI finished!" << std::endl;
 
