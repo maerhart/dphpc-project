@@ -65,8 +65,15 @@ public :
             SourceLocation beginLoc = srcMgr.getSpellingLoc(originalSrcRange.getBegin());
             SourceLocation endLoc = srcMgr.getSpellingLoc(originalSrcRange.getEnd());
             //llvm::errs() << refToGlobalVar << " source location: " << originalSrcRange.printToString(srcMgr) << " " << beginLoc.printToString(srcMgr) << "," << endLoc.printToString(srcMgr) << "\n";
-            mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
-            mRewriter.InsertTextAfterToken(endLoc, ")");
+
+            // check if we already applied this rewrite
+            std::string rewrittenText = mRewriter.getRewrittenText(SourceRange(beginLoc, beginLoc));
+            if (rewrittenText.find("__gpu_global") == std::string::npos) {
+                // we didn't applied rewrite yet, so we proceed
+                mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
+                mRewriter.InsertTextAfterToken(endLoc, ")");
+            }
+
         }
         if (const DeclRefExpr* refClassTokenDecl = Result.Nodes.getNodeAs<DeclRefExpr>("refClassTokenDecl")) {
             mRewriter.InsertText(refClassTokenDecl->getSourceRange().getBegin(), "__decl_");
