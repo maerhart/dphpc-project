@@ -22,6 +22,22 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp("\nMore help...\n");
 
 const char* GPU_MPI_PROJECT = "GPU_MPI_PROJECT";
+const char* GPU_MPI_MAX_RANKS = "GPU_MPI_MAX_RANKS";
+
+int getMaxRanks() {
+    int res = 1024;
+
+    char* maxRanks = getenv(GPU_MPI_MAX_RANKS);
+    if (maxRanks) {
+        res = atoi(maxRanks);
+        if (res <= 0) {
+            llvm::errs() << "ERROR: " << GPU_MPI_MAX_RANKS << " environment variable should contain number of ranks!";
+            exit(1);
+        }
+    }
+
+    return res;
+}
 
 class FuncConverter : public MatchFinder::MatchCallback {
 public :
@@ -45,13 +61,36 @@ public :
             bool error = mRewriter.InsertTextBefore(expandedLocation, "__device__ ");
             assert(!error);
         }
-        if (const VarDecl *var = Result.Nodes.getNodeAs<VarDecl>("globalVar")) {
-            //llvm::errs() << "GLOBAL VAR!!!\n";
-            mRewriter.InsertTextBefore(var->getSourceRange().getBegin(), "__device__ ");
-        }
         if (const ImplicitCastExpr *ice = Result.Nodes.getNodeAs<ImplicitCastExpr>("implicitCast")) {
             if (ice->getCastKind() == CastKind::CK_BitCast) {
                 mRewriter.InsertTextBefore(ice->getSourceRange().getBegin(), "(" + ice->getType().getAsString() + ")");
+            }
+        }
+        if (const VarDecl *var = Result.Nodes.getNodeAs<VarDecl>("globalVar")) {
+            int maxRanks = getMaxRanks();
+
+            mRewriter.InsertTextBefore(var->getSourceRange().getBegin(), "__device__ ");
+            SourceLocation varNameLocation = var->getLocation();
+            mRewriter.InsertTextAfterToken(varNameLocation, "[" + std::to_string(maxRanks) + "]");
+
+            if (var->hasInit()) {
+                if (var->getInitStyle() != VarDecl::InitializationStyle::CInit) {
+                    llvm::errs() << "ERROR: only C-style initialization is supported for variables with global storage\n";
+                    exit(1);
+                }
+
+                const Expr* initializer = var->getAnyInitializer();
+
+                initializer->getSourceRange();
+                std::string initializerText = Lexer::getSourceText(CharSourceRange::getTokenRange(initializer->getSourceRange()), mRewriter.getSourceMgr(), mRewriter.getLangOpts()).str();
+                std::string newInitText = "{" + initializerText;
+                for (int i = 1; i < maxRanks; i++) {
+                    newInitText += ", " + initializerText;
+                }
+                newInitText += "}";
+
+                mRewriter.ReplaceText(initializer->getSourceRange(), newInitText);
+
             }
         }
         if (const DeclRefExpr* refToGlobalVar = Result.Nodes.getNodeAs<DeclRefExpr>("refToGlobalVar")) {
@@ -69,7 +108,7 @@ public :
             // check if we already applied this rewrite
             std::string rewrittenText = mRewriter.getRewrittenText(SourceRange(beginLoc, beginLoc));
             if (rewrittenText.find("__gpu_global") == std::string::npos) {
-                // we didn't applied rewrite yet, so we proceed
+                // we didn't apply rewrite yet, so we proceed
                 mRewriter.InsertTextAfter(beginLoc, "__gpu_global("); // we need to insert it AFTER previous insertion to avoid issue with implicit cast before
                 mRewriter.InsertTextAfterToken(endLoc, ")");
             }
@@ -97,14 +136,16 @@ public:
         // we can't support them and stick to supporting only C subset.
         mMatcher.addMatcher(functionDecl(unless(isImplicit())).bind("func"), &mFuncConverter);
 
-        mMatcher.addMatcher(varDecl(hasGlobalStorage(), unless(isStaticLocal())).bind("globalVar"), &mFuncConverter);
-
         mMatcher.addMatcher(implicitCastExpr().bind("implicitCast"), &mFuncConverter);
 
+        // match both global variables and variables inside functions with "static" specifier
+        mMatcher.addMatcher(varDecl(hasGlobalStorage()).bind("globalVar"), &mFuncConverter);
+
+        // match references to global vars
         mMatcher.addMatcher(declRefExpr(to(varDecl(hasGlobalStorage()))).bind("refToGlobalVar"), &mFuncConverter);
 
-        mMatcher.addMatcher(declRefExpr(to(varDecl(hasGlobalStorage()))).bind("refToGlobalVar"), &mFuncConverter);
-
+        // in C it is possible to declare variable with name "class". For example: "int class = 0;"
+        // CUDA will not accept it, so we need to rename such occurences.
         mMatcher.addMatcher(declRefExpr(to(namedDecl(hasName("class")))).bind("refClassTokenDecl"), &mFuncConverter);
         mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
     }

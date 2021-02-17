@@ -106,6 +106,25 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
     }
 }
 
+
+// TODO: FIX. this is copypasted from converter.cpp, dangerous constant can be changed
+const char* GPU_MPI_MAX_RANKS = "GPU_MPI_MAX_RANKS";
+int getMaxRanks() {
+    int res = 1024;
+
+    char* maxRanks = getenv(GPU_MPI_MAX_RANKS);
+    if (maxRanks) {
+        res = atoi(maxRanks);
+        if (res <= 0) {
+            std::cerr << "ERROR: " << GPU_MPI_MAX_RANKS << " environment variable should contain number of ranks!\n";
+            exit(1);
+        }
+    }
+
+    return res;
+}
+
+
 int main(int argc, char* argv[]) {
 
     //MPI_CHECK(MPI_Init(&argc, &argv));
@@ -119,6 +138,13 @@ int main(int argc, char* argv[]) {
     unsigned heapSize = 0;
 
     int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize);
+
+    if (blocksPerGrid * threadsPerBlock > getMaxRanks()) {
+        printf("You trying to use more threads than supported by GPU MPI. You can increase the number of threads by\n");
+        printf("overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
+        printf("WARNING! Without recompilation, the program is expected to crash!\n");
+        exit(1);
+    }
 
     // increase stack size
     CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
