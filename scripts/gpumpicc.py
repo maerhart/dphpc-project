@@ -185,6 +185,7 @@ if __name__ == '__main__':
     cuda_sources = [convert_source_name(s) for s in compilation_sources]
     cuda_args = cuda_compatible_compilation_args(compilation_args)
 
+
     gpu_arch_flags = '@CMAKE_CUDA_FLAGS@'.split() # pass gpu arch
 
     # pass debug compile flags if they present
@@ -193,7 +194,10 @@ if __name__ == '__main__':
 
     #print('CMAKE_CUDA_FLAGS', gpu_arch_flags)
 
-    command = ['nvcc', '-rdc=true', *gpu_arch_flags, *cuda_sources, *cuda_args, *gpu_mpi_libs, *gpu_mpi_include_args]
+    command = ['nvcc', '-rdc=true', *gpu_arch_flags, *cuda_sources, *cuda_args, *gpu_mpi_include_args]
+    if '-c' not in cuda_args:
+        command += gpu_mpi_libs
+        
     #print("compile command:", " ".join(command))
     subprocess.run(command, check=True)
     

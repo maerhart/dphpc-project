@@ -54,12 +54,49 @@ public :
                 clang::TypeLoc tl = func->getTypeSourceInfo()->getTypeLoc();
                 clang::FunctionTypeLoc ftl = tl.getAsAdjusted<FunctionTypeLoc>();
                 mRewriter.ReplaceText(ftl.getParensRange(), "(int argc, char** argv)");
+
             }
             //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
             SourceLocation unexpandedLocation = func->getSourceRange().getBegin();
             SourceLocation expandedLocation = mRewriter.getSourceMgr().getFileLoc(unexpandedLocation);
             bool error = mRewriter.InsertTextBefore(expandedLocation, "__device__ ");
             assert(!error);
+
+            // Check for old style function parameter list and fix it.
+            // For example "void foo(a, b) int a; float b; {}" -> "void foo(int a, float b) {}"
+            FunctionTypeLoc ftl = func->getFunctionTypeLoc();
+
+            SourceLocation typedParamsStart;
+            SourceLocation typedParamsEnd;
+            std::string fixedParameterString;
+            for (unsigned i = 0; i < func->getNumParams(); i++) {
+                const ParmVarDecl* paramDecl = func->getParamDecl(i);
+                if (!ftl.getParensRange().fullyContains(paramDecl->getSourceRange())) {
+                    // we found it!
+                    QualType paramType = paramDecl->getType();
+                    std::string typeStr = paramType.getAsString();
+                    std::string nameStr = paramDecl->getNameAsString();
+                    if (i != 0) {
+                        fixedParameterString += ", ";
+                    }
+                    fixedParameterString += typeStr + " " + nameStr;
+
+                    SourceLocation startLocation = paramDecl->getBeginLoc();
+                    SourceLocation endLocation = paramDecl->getEndLoc().getLocWithOffset(1); // account for semicolon
+
+                    if (typedParamsStart.isInvalid() || mRewriter.getSourceMgr().isBeforeInTranslationUnit(startLocation, typedParamsStart)) {
+                        typedParamsStart = startLocation;
+                    }
+                    if (typedParamsEnd.isInvalid() || mRewriter.getSourceMgr().isBeforeInTranslationUnit(typedParamsEnd, endLocation)) {
+                        typedParamsEnd = endLocation;
+                    }
+                }
+
+            }
+            if (!fixedParameterString.empty()) {
+                mRewriter.ReplaceText(ftl.getParensRange(), "(" + fixedParameterString + ")");
+                mRewriter.RemoveText(SourceRange(typedParamsStart, typedParamsEnd));
+            }
         }
         if (const ImplicitCastExpr *ice = Result.Nodes.getNodeAs<ImplicitCastExpr>("implicitCast")) {
             if (ice->getCastKind() == CastKind::CK_BitCast) {
