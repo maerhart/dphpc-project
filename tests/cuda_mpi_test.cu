@@ -68,7 +68,7 @@ struct TransferArrayKernel {
 
 TEST_CASE("Transfer array", "[array]") {
     TestRunner testRunner(2);
-    testRunner.mSharedStateContext = {2, 10, 10, 10, 10};
+    testRunner.mSharedStateContext = {2, 10};
     testRunner.run<TransferArrayKernel>();
 }
 
@@ -122,7 +122,7 @@ struct SendRecvKernel {
 
 TEST_CASE("Send receive", "[send_recv]") {
     TestRunner testRunner(2);
-    testRunner.mSharedStateContext = {2, 10, 10, 10, 10};
+    testRunner.mSharedStateContext = {2, 10};
     testRunner.run<SendRecvKernel>();
 }
 
@@ -169,7 +169,7 @@ struct RepeatSendRecvKernel {
 
 TEST_CASE("Repeat send recv", "[repeat_sendrecv]") {
     TestRunner testRunner(2);
-    testRunner.mSharedStateContext = {2, 10, 10, 10, 10};
+    testRunner.mSharedStateContext = {2, 10};
     testRunner.run<RepeatSendRecvKernel>();
 }
 
@@ -228,7 +228,7 @@ struct NetworkFloodKernel {
 
 TEST_CASE("Network flood", "[network_flood]") {
     TestRunner testRunner(3);
-    testRunner.mSharedStateContext = {3, 10, 10, 10, 10};
+    testRunner.mSharedStateContext = {3, 10};
     testRunner.run<NetworkFloodKernel>();
 }
 
@@ -311,7 +311,7 @@ struct AllToAllKernel {
 
 TEST_CASE("All to all", "[all_to_all]") {
     TestRunner testRunner(10);
-    testRunner.mSharedStateContext = {10, 10, 10, 10, 10};
+    testRunner.mSharedStateContext = {10, 10};
     testRunner.mThreadPrivateStateContext.pendingBufferSize = 400;
     testRunner.run<AllToAllKernel>();
 }

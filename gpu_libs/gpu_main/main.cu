@@ -159,9 +159,6 @@ int main(int argc, char* argv[]) {
     CudaMPI::SharedState::Context sharedStateContext;
     sharedStateContext.numThreads = blocksPerGrid * threadsPerBlock;
     sharedStateContext.recvListSize = 16;
-    sharedStateContext.numFragments = 256;
-    sharedStateContext.fragmentSize = 1024;
-    sharedStateContext.numIncomingFragments = 64;
 
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
     CudaMPI::SharedState* sharedState = sharedStateHolder.get();

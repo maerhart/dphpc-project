@@ -134,12 +134,12 @@ public:
 #endif
     }
     
-    __host__ __device__ volatile T& operator[](int index) volatile {
+    __host__ __device__ T& operator[](int index) {
         assert(0 <= index && index < mSize);
-        return VOLATILE(mData[index]);
+        return mData[index];
     }
 
-    __host__ __device__ int size() const volatile { return mSize; }
+    __host__ __device__ int size() const { return mSize; }
 
 private:
     int mSize;
