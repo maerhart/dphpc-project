@@ -55,20 +55,19 @@ public:
             (void*)&ok
         };
 
+        cudaEvent_t kernelFinishEvent;
+        CUDA_CHECK(cudaEventCreate(&kernelFinishEvent));
+
         //CUDA_CHECK(cudaLaunchCooperativeKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
         CUDA_CHECK(cudaLaunchKernel((void*)testRunnerKernel<KernelClass>, mSharedStateContext.numThreads, 1, params));
         CUDA_CHECK(cudaPeekAtLastError());
-        
-        std::set<int> unfinishedThreads;
-        for (int i = 0; i < mSharedStateContext.numThreads; i++) {
-            unfinishedThreads.insert(i);
-        }
 
-        while (!unfinishedThreads.empty()) {
+        CUDA_CHECK(cudaEventRecord(kernelFinishEvent));
+
+        while (cudaEventQuery(kernelFinishEvent) == cudaErrorNotReady) {
             sharedState->deviceToHostCommunicator.processIncomingMessages([&](void* ptr, size_t size, int threadRank) {
                 if (ptr == 0 && size == 0) {
-                    int erased = unfinishedThreads.erase(threadRank);
-                    assert(erased);
+                    // nothing to do, this is notification that thread finished execution
                 } else {
                     process_gpu_libc(ptr, size);
                 }

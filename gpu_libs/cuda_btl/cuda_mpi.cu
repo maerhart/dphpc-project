@@ -170,6 +170,7 @@ __device__ void progressStartedSend(PendingOperation& send, ProgressState& state
 
         LOG("Notify receiver that data is copied");
         done = true;
+        cudaGlobalFence();
 
         LOG("Change state to COMPLETED");
         send.state = PendingOperation::State::COMPLETED;
@@ -310,6 +311,7 @@ __device__ void progressStartedRecv(PendingOperation& recv, ProgressState& state
     if (matchedSend) {
         if (matchedSend->done) {
             *matchedSend->done = true;
+            cudaGlobalFence();
         }
 
         void* otherData = matchedSend->data;

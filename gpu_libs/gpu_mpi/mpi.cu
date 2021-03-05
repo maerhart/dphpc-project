@@ -58,8 +58,6 @@ __device__ int MPI_Finalize(void) {
     // TODO: due to exit() you need to perform
     // all MPI related memory deallocation here
 
-    // notify host that there will be no messages from this thread anymore
-    CudaMPI::sharedState().deviceToHostCommunicator.delegateToHost(0, 0);
 
     gpu_mpi::destroyGlobalGroups();
     gpu_mpi::destroyGlobalCommunicators();
