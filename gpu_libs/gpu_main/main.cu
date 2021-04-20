@@ -46,7 +46,7 @@ void* copyArgsToUnifiedMemory(int argc, char** argv) {
  * Return new argc: everything after "---gpumpi"
  */
 int parseGPUMPIArgs(int argc, char** argv, 
-    unsigned& blocksPerGrid, unsigned& threadsPerBlock, unsigned& stackSize, unsigned& heapSize) 
+    unsigned& blocksPerGrid, unsigned& threadsPerBlock, unsigned& stackSize, unsigned& heapSize, unsigned& pendingBufferSize) 
 {
     int trippleDashPosition = -1;
     for (int i = 0; i < argc; i++) {
@@ -71,6 +71,7 @@ int parseGPUMPIArgs(int argc, char** argv,
         ("b,threadsPerBlock", "Threads per block", cxxopts::value<unsigned>()->default_value("1"))
         ("s,stackSize", "Override stack size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("1024"))
         ("p,heapSize", "Override heap size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("8388608"))
+        ("e,pendingBufferSize", "Override size of thread-local buffer of pending messages", cxxopts::value<unsigned>()->default_value("1024"))
         ("h,help", "Print help text")
         ;
 
@@ -87,6 +88,7 @@ int parseGPUMPIArgs(int argc, char** argv,
     threadsPerBlock = result["threadsPerBlock"].as<unsigned>();
     stackSize = result["stackSize"].as<unsigned>();
     heapSize = result["heapSize"].as<unsigned>();
+    pendingBufferSize = result["pendingBufferSize"].as<unsigned>();
 
     return trippleDashPosition;
 }
@@ -136,8 +138,9 @@ int main(int argc, char* argv[]) {
     unsigned threadsPerBlock = 0;
     unsigned stackSize = 0;
     unsigned heapSize = 0;
+    unsigned pendingBufferSize = 0;
 
-    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize);
+    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize, pendingBufferSize);
 
     if (blocksPerGrid * threadsPerBlock > getMaxRanks()) {
         printf("You trying to use more threads than supported by GPU MPI. You can increase the number of threads by\n");
@@ -172,7 +175,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<CudaMPI::ThreadPrivateState::Context> threadPrivateStateContext(deviceCount);
     for(int device = 0; device < deviceCount; device++) {
-        threadPrivateStateContext[device].pendingBufferSize = 20;
+        threadPrivateStateContext[device].pendingBufferSize = pendingBufferSize;
 
         int peakClockKHz;
         CUDA_CHECK(cudaDeviceGetAttribute(&peakClockKHz, cudaDevAttrClockRate, device));

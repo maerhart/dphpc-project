@@ -4,6 +4,7 @@
 #include "common.h"
 #include <cassert>
 
+
 namespace CudaMPI {
 
 template <typename T>
@@ -21,6 +22,7 @@ public:
         , mReserved(n)
         , mData((T*) malloc(mReserved * sizeof(T)))
     {
+        assert(mData);
         for (int i = 0; i < mSize; i++) {
             new (&mData[i]) T(value);
         }
