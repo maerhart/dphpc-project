@@ -1,7 +1,7 @@
 #include <Alloc.h>
 #include <string.h>
 
-void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
+void *_newArr(int typesize, int dim, int sz1, va_list sizeargs){
 
 	void** arr;
 	if(dim < 2){
@@ -21,14 +21,14 @@ void *_newArr(int typesize, int dim, size_t sz1, va_list sizeargs){
         }
 	}
 
-	size_t sz2 = va_arg(sizeargs, int);
+	int sz2 = va_arg(sizeargs, int);
 	void* ptr = _newArr(typesize, dim-1, sz1*sz2, sizeargs);
 
 	int size = typesize;
 	if(dim > 2){
 		size = sizeof(void*);
 	}
-	for (size_t i = 0; i < sz1; i++) {
+	for (int i = 0; i < sz1; i++) {
 		arr[i] = ptr;
 		ptr = ((char*)ptr) + sz2*size;
 	}
@@ -42,7 +42,7 @@ void *newArr(int typesize, int dim, ...){
 
 	va_list args;
 	va_start(args, dim);
-	size_t sz1 = va_arg(args, int);
+	int sz1 = va_arg(args, int);
 	void* arr = _newArr(typesize, dim, sz1, args);
 	va_end(args);
 
@@ -62,18 +62,18 @@ void **ptrArr(void **in, int typesize, int dim, ...){
 	va_copy(args_cpy, args);
 
 	// Calculate combined sizes
-	size_t szarr = 1;
+	int szarr = 1;
 	for(int i=0; i<dim-1; i++){
 		szarr *= va_arg(args, int);
 	}
-	size_t sz0 = va_arg(args, int);
+	int sz0 = va_arg(args, int);
 
 	// Array to hold data
 	*in = newArr(typesize, 1, szarr*sz0);
 	void *ptr = *in;
 
 	// Create hierarchy of pointer to pointer arrays, d-1 deep.
-	size_t sz1 = va_arg(args_cpy, int);
+	int sz1 = va_arg(args_cpy, int);
 	void **arr = (void**)_newArr(sizeof(void*), dim-1, sz1, args_cpy);
 	void **arr2 = arr;
 
@@ -83,7 +83,7 @@ void **ptrArr(void **in, int typesize, int dim, ...){
 	}
 
 	// Set pointer location for bottom pointer array to point to data
-	for(size_t i=0; i<szarr; i++){
+	for(int i=0; i<szarr; i++){
 		arr2[i] = ptr;
 		ptr = ((char*)ptr) + sz0*typesize;
 	}
