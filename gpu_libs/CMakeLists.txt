@@ -14,8 +14,6 @@ set(CMAKE_CUDA_FLAGS
     -gencode arch=compute_61,code=sm_61 \
     -gencode arch=compute_70,code=sm_70")
 
-add_subdirectory(cuda_btl)
-
 add_subdirectory(gpu_libc)
 add_subdirectory(gpu_mpi)
 add_subdirectory(gpu_main)

@@ -1,28 +1,33 @@
 #ifndef DEVICE_VECTOR_CUH
 #define DEVICE_VECTOR_CUH
 
+#include "assert.cuh"
 #include "common.h"
-#include <cassert>
-
 
 namespace CudaMPI {
 
 template <typename T>
 class DeviceVector {
+private:
+    static __device__ T* checked_alloc(size_t elems) {
+        size_t nbytes = elems * sizeof(T);
+        T* ptr = (T*) malloc(nbytes);
+        __gpu_assert(ptr);
+        return ptr;
+    }
 public:
     __device__ DeviceVector()
         : mSize(0)
         , mReserved(1)
-        , mData((T*) malloc(mReserved * sizeof(T)))
+        , mData(DeviceVector<T>::checked_alloc(mReserved))
     {
     }
     
     __device__ DeviceVector(int n, const T& value = T())
         : mSize(n)
         , mReserved(n)
-        , mData((T*) malloc(mReserved * sizeof(T)))
+        , mData(DeviceVector<T>::checked_alloc(mReserved))
     {
-        assert(mData);
         for (int i = 0; i < mSize; i++) {
             new (&mData[i]) T(value);
         }
@@ -31,7 +36,7 @@ public:
     __device__ DeviceVector(const DeviceVector& other)
         : mSize(0)
         , mReserved(other.size())
-        , mData((T*) malloc(mReserved * sizeof(T)))
+        , mData(DeviceVector<T>::checked_alloc(mReserved))
     {
         for (int i = 0; i < other.size(); i++) {
             mData[i] = other[i];
@@ -82,7 +87,7 @@ public:
         if (new_reserve < mSize) return;
         if (new_reserve == mReserved) return;
         
-        T* new_data = (T*)malloc(new_reserve * sizeof(T));
+        T* new_data = DeviceVector<T>::checked_alloc(new_reserve);
         memcpy(new_data, mData, mSize * sizeof(T));
         free(mData);
         mData = new_data;

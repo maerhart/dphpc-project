@@ -21,11 +21,12 @@ set(CMAKE_CUDA_FLAGS
     -gencode arch=compute_61,code=sm_61 \
     -gencode arch=compute_70,code=sm_70")
 
+add_subdirectory(common)
 add_subdirectory(source_converter)
 add_subdirectory(gpu_libs)
 add_subdirectory(scripts)
-add_subdirectory(common)
 
+include(CTest) # enables Dashboard actions support 
 enable_testing()
 add_subdirectory(tests)
 add_subdirectory(toolchain_tests)
@@ -35,7 +36,6 @@ export(TARGETS
     gpu_libc
     gpu_mpi
     gpu_main
-    cuda_btl
     common
     libc_processor
     APPEND FILE gpu_libs-exports.cmake)

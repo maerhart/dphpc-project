@@ -19,11 +19,7 @@
 #define abort __gpu_abort
 #define strtod __gpu_strtod
 #define posix_memalign __gpu_posix_memalign
-
-// uncomment following line only if you want to provide custom malloc implementation
-// instead of default nvcc provided malloc
-//#define malloc __gpu_malloc
-
+#define malloc __gpu_malloc
 #define calloc __gpu_calloc
 
 #endif // STDLIB_H_CUH

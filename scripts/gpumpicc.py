@@ -123,7 +123,6 @@ if __name__ == '__main__':
     # TODO: ugly: location of static libraries is controlled by cmake and can be changed in newer cmake versions
     gpu_mpi_libs: List[str] = [ 
         scripts_dir + "/../gpu_libs/gpu_mpi/libgpu_mpi.a",
-        scripts_dir + "/../gpu_libs/cuda_btl/libcuda_btl.a",
         scripts_dir + "/../gpu_libs/gpu_libc/libgpu_libc.a",
         scripts_dir + "/../gpu_libs/gpu_main/libgpu_main.a",
         scripts_dir + "/../gpu_libs/gpu_main/liblibc_processor.a",

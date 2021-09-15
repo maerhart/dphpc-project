@@ -48,12 +48,12 @@ __device__ char *__gpu_getenv(const char *name) {
 }
 
 __device__ void __gpu_exit(int) {
-    printf("GPU_MPI: DEVICE-SIDE EXIT\n");
+    printf("GPUMPI: DEVICE-SIDE EXIT\n");
     asm("exit;");
 }
 
 __device__ void __gpu_abort() {
-    printf("GPU_MPI: DEVICE-SIDE ABORT\n");
+    printf("GPUMPI: DEVICE-SIDE ABORT\n");
     asm("trap;");
 }
 
@@ -62,18 +62,18 @@ __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size
     return 0;
 }
 
-__device__ void* __gpu_malloc(size_t size) {
+__device__ void* __gpu_malloc(size_t size) {   
     void* ptr = malloc(size);
-    if (ptr) {
-        printf("GPUMPI: successful allocation of %llu bytes on device\n", (long long unsigned)size);
-    } else {
-        printf("GPUMPI: failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    #ifndef NDEBUG
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }
+    #endif
     return ptr;
 }
 
 __device__ void* __gpu_calloc(size_t nmemb, size_t size) {
-    void* ptr = malloc(nmemb * size);
+    void* ptr = __gpu_malloc(nmemb * size);
     if (ptr) {
         memset(ptr, 0, nmemb * size);
     }

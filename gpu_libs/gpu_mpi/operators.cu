@@ -201,7 +201,7 @@ struct IsTypeOpAllowed<T, OpBXor, std::enable_if_t<IsIntegerType<T>::value || Is
 
 template <typename T, template <class> class Op, bool allowed>
 struct TypeOpMatcher {
-    static __device__ void run(void* invec, void* inoutvec, int *len) {
+    static __device__ void run(void* /*invec*/, void* /*inoutvec*/, int */*len*/) {
         printf("gpu_mpi: Combination of type and operator is not allowed in reduce operation\n");
         __gpu_abort();
     }

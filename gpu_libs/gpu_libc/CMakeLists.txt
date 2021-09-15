@@ -1,4 +1,6 @@
 add_library(gpu_libc
+    assert.cu
+    cuda_mpi.cu
     stdarg.cu
     stdio.cu
     stdlib.cu
@@ -12,4 +14,4 @@ add_library(gpu_libc
     omp.cu
     )
 target_include_directories(gpu_libc PUBLIC sys)
-target_link_libraries(gpu_libc PUBLIC cuda_btl)
+target_link_libraries(gpu_libc PUBLIC common)

@@ -15,7 +15,7 @@
 #include <cxxopts.hpp>
 
 #include "common.h"
-
+#include "assert.cuh"
 #include "cuda_mpi.cuh"
 
 #include "libc_processor.cuh"
@@ -154,6 +154,7 @@ int main(int argc, char* argv[]) {
     // increase heap size
     CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize));
 
+    CudaMPI::initError();
 
     // convert the argv array into memory inside the an UM allocated buffer
     void* argvInUnifiedMemory = copyArgsToUnifiedMemory(argcWithoutGPUMPI,argv);
@@ -227,6 +228,8 @@ int main(int argc, char* argv[]) {
     }
     std::cerr << "GPUMPI: Kernel finished, stop processing messages from device threads" << std::endl;
 
+    CudaMPI::printLastError();
+
     // make sure that everything is ok after kernel launch
     CUDA_CHECK(cudaEventQuery(kernelFinishEvent));
 
@@ -235,6 +238,7 @@ int main(int argc, char* argv[]) {
     // release all resources
 
     CUDA_CHECK(cudaFree(argvInUnifiedMemory));
+    CudaMPI::freeError();
 
     //MPI_CHECK(MPI_Finalize());
 
