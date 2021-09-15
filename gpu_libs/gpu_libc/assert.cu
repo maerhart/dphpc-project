@@ -15,8 +15,9 @@ struct GPU_MPI_Error {
     }
 };
 
-GPU_MPI_Error* host_err;
-__device__ GPU_MPI_Error* gpu_mpi_err;
+static GPU_MPI_Error* host_err;
+static __device__ GPU_MPI_Error* gpu_mpi_err;
+static __device__ int err_lock;
 
 namespace CudaMPI {
 
@@ -34,11 +35,13 @@ void freeError() {
 }
 
 __device__ void recordError(const char* msg) {
+    if (atomicCAS(&err_lock, 0, 1)) {
+        return; // another thread already wrote into err
+    }
+
     GPU_MPI_Error& e = *gpu_mpi_err;
 
-    if (atomicCAS_system(&e.occured, 0, 1)) {
-        return; // don't override first occured error 
-    }
+    e.occured = 1;
 
     __gpu_strncpy(e.msg, msg, GPU_MPI_Error::max_msg_size - 1);
 
