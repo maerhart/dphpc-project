@@ -11,7 +11,7 @@ class DeviceVector {
 private:
     static __device__ T* checked_alloc(size_t elems) {
         size_t nbytes = elems * sizeof(T);
-        T* ptr = (T*) malloc(nbytes);
+        T* ptr = (T*) __gpu_malloc(nbytes);
         __gpu_assert(ptr);
         return ptr;
     }

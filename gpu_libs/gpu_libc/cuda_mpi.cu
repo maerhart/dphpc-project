@@ -36,7 +36,7 @@ __device__ PendingOperation* ThreadPrivateState::allocatePendingOperation() {
 __device__ ThreadPrivateState* gThreadLocalState = nullptr;
 
 __device__ ThreadPrivateState& threadPrivateState() {
-    assert(gThreadLocalState != nullptr);
+    __gpu_assert(gThreadLocalState);
     int gridIdx = sharedState().gridRank();
     return gThreadLocalState[gridIdx];
 }
@@ -50,7 +50,6 @@ __device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
         //__threadfence_system(); // not required anymore, barrier makes sure this change is visible before
     }
     sharedState().gridBarrier();
-    assert(gThreadLocalState);
     new (&threadPrivateState()) ThreadPrivateState(ctx);
 }
 

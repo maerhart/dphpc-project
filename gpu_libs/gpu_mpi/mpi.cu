@@ -74,11 +74,38 @@ __device__ int MPI_Get_processor_name(char *name, int *resultlen) {
     return MPI_SUCCESS;
 }
 
+static __device__ CudaMPI::DeviceVector<char>* native_buf;
+__device__ CudaMPI::DeviceVector<char>& nativeBuf() {
+    if (!native_buf) {
+        native_buf = new CudaMPI::DeviceVector<char>;
+    }
+    return *native_buf;
+}
+
+__device__ int MPI_Bcast_native(void* buffer, int size, int root) {
+    int commRank = -1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &commRank);
+    CudaMPI::sharedState().gridBarrier();
+    if (root == commRank) {
+        nativeBuf().resize(size);
+        __gpu_memcpy(&nativeBuf()[0], buffer, size);
+    }
+    CudaMPI::sharedState().gridBarrier();
+    if (root != commRank) {
+        __gpu_memcpy(buffer, &nativeBuf()[0], size);
+    }
+    return MPI_SUCCESS;
+}
+
 __device__ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
                          int root, MPI_Comm comm)
 {
     int dataSize = gpu_mpi::plainTypeSize(datatype) * count;
     assert(dataSize > 0);
+
+    if (comm == MPI_COMM_WORLD) {
+        return MPI_Bcast_native(buffer, dataSize, root);
+    }
     
     int commSize = -1;
     int commRank = -1;
@@ -117,17 +144,54 @@ __device__ double MPI_Wtime(void) {
     return seconds;
 }
 
+__device__ int MPI_Reduce_native(
+    const void *sendbuf, void *recvbuf, int count, int root) 
+{
+    int commRank = -1;
+    MPI_Comm_rank(MPI_COMM_WORLD, &commRank);
+
+    int elemSize = gpu_mpi::plainTypeSize(MPI_DOUBLE);
+    int dataSize = elemSize * count;
+    __gpu_assert(dataSize > 0);
+    CudaMPI::sharedState().gridBarrier();
+    if (root == commRank) {
+        nativeBuf().resize(dataSize);
+        double* native_buf_start = (double*)&nativeBuf()[0];
+        for (int i = 0; i < count; i++) {
+            native_buf_start[i] = ((double*)sendbuf)[i];
+        }
+    }
+    CudaMPI::sharedState().gridBarrier();
+    double* native_buf_start = (double*)&nativeBuf()[0];
+    if (root != commRank) {
+        for (int i = 0; i < count; i++) {
+            atomicAdd(&native_buf_start[i], ((double*)sendbuf)[i]);
+        }
+    }
+    CudaMPI::sharedState().gridBarrier();
+    if (root == commRank) {
+        for (int i = 0; i < count; i++) {
+            ((double*)recvbuf)[i] = native_buf_start[i];
+        }
+    }
+    return MPI_SUCCESS;
+}
+
 __device__ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
                           MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
 {
+    if (comm == MPI_COMM_WORLD && op == MPI_SUM && datatype == MPI_DOUBLE) {
+        return MPI_Reduce_native(sendbuf, recvbuf, count, root);
+    }
+
+    int elemSize = gpu_mpi::plainTypeSize(datatype);
+    int dataSize = elemSize * count;
+    __gpu_assert(dataSize > 0);
+    
     int commSize = -1;
     int commRank = -1;
     MPI_Comm_size(comm, &commSize);
     MPI_Comm_rank(comm, &commRank);
-
-    int elemSize = gpu_mpi::plainTypeSize(datatype);
-    int dataSize = elemSize * count;
-    assert(dataSize > 0);
     
     int tag = MPI_COLLECTIVE_TAG;
     int ctx = gpu_mpi::getCommContext(comm);
