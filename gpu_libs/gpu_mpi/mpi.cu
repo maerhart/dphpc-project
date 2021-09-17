@@ -79,6 +79,7 @@ __device__ CudaMPI::DeviceVector<char>& nativeBuf() {
     if (!native_buf) {
         native_buf = new CudaMPI::DeviceVector<char>;
     }
+    __gpu_assert(native_buf);
     return *native_buf;
 }
 

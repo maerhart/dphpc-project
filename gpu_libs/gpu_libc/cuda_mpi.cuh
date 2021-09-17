@@ -508,6 +508,9 @@ public:
     // behaves exactly as this_grid().sync(), but without cooperative group kernel launch
     __device__ void gridBarrier() {
 
+        // make sure that all memory writes became visible to other threads after they pass the barrier
+        __threadfence_system(); 
+
         // get total number of CUDA blocks
         // assume that kernels launched only with X dimension
         int numBlocks = gridDim.x;

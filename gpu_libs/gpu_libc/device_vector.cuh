@@ -25,7 +25,7 @@ public:
     
     __device__ DeviceVector(int n, const T& value = T())
         : mSize(n)
-        , mReserved(n)
+        , mReserved(n > 0 ? n : 1)
         , mData(DeviceVector<T>::checked_alloc(mReserved))
     {
         for (int i = 0; i < mSize; i++) {
