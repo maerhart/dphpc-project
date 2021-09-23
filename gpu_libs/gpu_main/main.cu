@@ -46,7 +46,7 @@ void* copyArgsToUnifiedMemory(int argc, char** argv) {
  * Return new argc: everything after "---gpumpi"
  */
 int parseGPUMPIArgs(int argc, char** argv, 
-    unsigned& blocksPerGrid, unsigned& threadsPerBlock, unsigned& stackSize, unsigned& heapSize, unsigned& pendingBufferSize) 
+    unsigned& blocksPerGrid, unsigned& threadsPerBlock, size_t& stackSize, size_t& heapSize, unsigned& pendingBufferSize) 
 {
     int trippleDashPosition = -1;
     for (int i = 0; i < argc; i++) {
@@ -69,8 +69,8 @@ int parseGPUMPIArgs(int argc, char** argv,
     options.add_options()
         ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<unsigned>()->default_value("1"))
         ("b,threadsPerBlock", "Threads per block", cxxopts::value<unsigned>()->default_value("1"))
-        ("s,stackSize", "Override stack size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("1024"))
-        ("p,heapSize", "Override heap size limit on GPU (bytes)", cxxopts::value<unsigned>()->default_value("8388608"))
+        ("s,stackSize", "Override stack size limit on GPU (bytes)", cxxopts::value<size_t>()->default_value("1024"))
+        ("p,heapSize", "Override heap size limit on GPU (bytes)", cxxopts::value<size_t>()->default_value("0"))
         ("e,pendingBufferSize", "Override size of thread-local buffer of pending messages", cxxopts::value<unsigned>()->default_value("1024"))
         ("h,help", "Print help text")
         ;
@@ -86,8 +86,8 @@ int parseGPUMPIArgs(int argc, char** argv,
 
     blocksPerGrid = result["blocksPerGrid"].as<unsigned>();
     threadsPerBlock = result["threadsPerBlock"].as<unsigned>();
-    stackSize = result["stackSize"].as<unsigned>();
-    heapSize = result["heapSize"].as<unsigned>();
+    stackSize = result["stackSize"].as<size_t>();
+    heapSize = result["heapSize"].as<size_t>();
     pendingBufferSize = result["pendingBufferSize"].as<unsigned>();
 
     return trippleDashPosition;
@@ -136,8 +136,8 @@ int main(int argc, char* argv[]) {
 
     unsigned blocksPerGrid = 0;
     unsigned threadsPerBlock = 0;
-    unsigned stackSize = 0;
-    unsigned heapSize = 0;
+    size_t stackSize = 0;
+    size_t heapSize = 0;
     unsigned pendingBufferSize = 0;
 
     int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize, pendingBufferSize);
@@ -145,14 +145,31 @@ int main(int argc, char* argv[]) {
     if (blocksPerGrid * threadsPerBlock > getMaxRanks()) {
         printf("You trying to use more threads than supported by GPU MPI. You can increase the number of threads by\n");
         printf("overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
-        printf("WARNING! Without recompilation, the program is expected to crash!\n");
+        printf("Exitting...\n");
         exit(1);
     }
 
-    // increase stack size
-    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
-    // increase heap size
-    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize));
+    int blocksPerMP = -1;
+    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocksPerMP, __gpu_main_caller, threadsPerBlock, /*sharedMem*/ 0));
+    printf("GPUMPI: Max active blocks per multiprocessor %d (for %d thread(s) per block)\n", blocksPerMP, threadsPerBlock);
+
+    int multiProcessorCount = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&multiProcessorCount, cudaDevAttrMultiProcessorCount, /*device*/ 0));
+    
+    // According to documentation for cudaLaunchCooperativeKernel this is the max number of blocks we can run.
+    // Even while we are not using cudaLaunchCooperativeKernel, we have the same requirement
+    // to support grid-wide synchronization. It is only possible if all threads are active.
+    // When limit on the number of blocks is exceed, blocks scheduled sequentially, so
+    // global barrier will cause the deadlock as
+    // block 0 can't finish before block N is started and block N can't start before block 0 is finished.
+    int maxBlocks = blocksPerMP * multiProcessorCount;
+    printf("GPUMPI: Max number of blocks is %d (for %d thread(s) per block)\n", maxBlocks, threadsPerBlock);
+    
+    if (blocksPerGrid > maxBlocks) {
+        printf("The requested number of blocks (%d) exceeds the maximum number of blocks (%d) supported by GPU.\n", blocksPerGrid, maxBlocks);
+        printf("Exitting...\n");
+        exit(1);
+    }
 
     CudaMPI::initError();
 
@@ -203,6 +220,26 @@ int main(int argc, char* argv[]) {
         launchParamsList[i].sharedMem = 0;
         launchParamsList[i].stream = cudaStreams[i];
     }
+
+    // increase stack size
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitStackSize, stackSize));
+    // increase heap size
+    size_t memFree = 0;
+    size_t memTotal = 0;
+    CUDA_CHECK(cudaMemGetInfo(&memFree, &memTotal));
+    printf("GPUMPI: memFree = %zu, memTotal = %zu\n", memFree, memTotal);
+
+    if (heapSize == 0) {
+        // leave some free memory for CUDA internal implementation
+        // otherwise kernel will not be launched
+        double usageRatio = 0.8; 
+        printf("GPUMPI: Heap memory requirements are not specified\n");
+        printf("GPUMPI: Using %d %% of free memory for the heap\n", (int)(usageRatio * 100));
+        heapSize = memFree * usageRatio; 
+    }
+
+    printf("GPUMPI: Requested heap memory size is %zu bytes\n", heapSize);
+    CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize));
 
     cudaEvent_t kernelFinishEvent;
     CUDA_CHECK(cudaEventCreate(&kernelFinishEvent));
