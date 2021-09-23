@@ -142,6 +142,16 @@ int main(int argc, char* argv[]) {
 
     int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize, pendingBufferSize);
 
+    int computeCapabilityMajor = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&computeCapabilityMajor, cudaDevAttrComputeCapabilityMajor, /* device */ 0));
+    bool hasIndependentThreadScheduling = computeCapabilityMajor >= 7;
+
+    if (!hasIndependentThreadScheduling && threadsPerBlock > 1) {
+        printf("GPU doesn't support independent thread scheduling. The max threads per block is limited to 1, while %u requested.\n", threadsPerBlock);
+        printf("Exitting...\n");
+        exit(1);
+    }
+
     if (blocksPerGrid * threadsPerBlock > getMaxRanks()) {
         printf("You trying to use more threads than supported by GPU MPI. You can increase the number of threads by\n");
         printf("overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
