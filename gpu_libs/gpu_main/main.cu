@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
         if (threadsPerBlock == 0) {
             int minGridSize = 0;
             int blockSize = 0;
-            CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, __gpu_main_caller, /*dynamicSMemSize*/ 0, /*blockSizeLimit*/ 0));
+            CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, __gpu_main_caller, /*dynamicSMemSize*/ 0, /*blockSizeLimit*/ threadsPerBlock));
             (void)minGridSize; // unused
             threadsPerBlock = blockSize;
         }
