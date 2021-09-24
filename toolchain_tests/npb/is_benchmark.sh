@@ -7,7 +7,6 @@ scriptdir=$(readlink -f $(dirname "$0"))
 cd "$scriptdir"
 
 GPU_MPI_BUILD="$scriptdir/../../"
-cmake --build "${GPU_MPI_BUILD}"
 source "${GPU_MPI_BUILD}/scripts/environment.sh"
 
 echo -n "" > results_nas_is.txt

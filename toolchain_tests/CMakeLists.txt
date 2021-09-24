@@ -71,6 +71,17 @@ add_custom_command(
     USES_TERMINAL
 )
 
+# sputnipic
+
+file(COPY sputnipic DESTINATION .)
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sputnipic/sputnipic_result.txt" 
+    COMMAND ${BASH_PROGRAM} benchmark.sh
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/sputnipic"
+    USES_TERMINAL
+)
+
 # benchmark
 
 add_custom_target(benchmark DEPENDS
@@ -78,4 +89,5 @@ add_custom_target(benchmark DEPENDS
     "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_cpu.txt"
     "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_is.txt"
     "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_dt.txt"
+    "${CMAKE_CURRENT_BINARY_DIR}/sputnipic/sputnipic_result.txt"
 )

@@ -8,7 +8,6 @@ cd "$scriptdir"
 
 GPU_MPI_BUILD="$scriptdir/../../"
 
-cmake --build "${GPU_MPI_BUILD}"
 source "${GPU_MPI_BUILD}/scripts/environment.sh"
 $MPICC cpi.c -o ./pi_gpu
 mpicc cpi.c -O3 -o ./pi_cpu
