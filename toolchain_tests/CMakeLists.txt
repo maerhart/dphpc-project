@@ -9,11 +9,19 @@ find_program (BASH_PROGRAM bash)
 configure_file(pi/cpi.c pi/cpi.c COPYONLY)
 configure_file(pi/Makefile pi/Makefile COPYONLY)
 configure_file(pi/test.sh pi/test.sh COPYONLY)
+configure_file(pi/benchmark.sh pi/benchmark.sh COPYONLY)
 
 add_test(
     NAME pi_test
     COMMAND ${BASH_PROGRAM} test.sh
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pi"
+)
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_gpu.txt" "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_cpu.txt"
+    COMMAND ${BASH_PROGRAM} benchmark.sh
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/pi"
+    USES_TERMINAL
 )
 
 # Test global var support 
@@ -45,3 +53,9 @@ add_test(
     COMMAND ${BASH_PROGRAM} dt_test.sh
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/npb"
 )
+
+
+# benchmark
+
+add_custom_target(benchmark DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_gpu.txt" "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_cpu.txt")
+

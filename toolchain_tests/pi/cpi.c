@@ -7,6 +7,7 @@
 
 #include "mpi.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 double f(double);
@@ -33,7 +34,11 @@ int main(int argc, char *argv[])
     fprintf(stdout, "Process %d of %d is on %s\n", myid, numprocs, processor_name);
     fflush(stdout);
 
-    n = 10000;  /* default # of rectangles */
+    if (argc < 2) {
+        n = 10000;  /* default # of rectangles */
+    } else {
+        n = atoi(argv[1]);
+    }
     if (myid == 0)
         startwtime = MPI_Wtime();
 
