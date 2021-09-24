@@ -91,3 +91,14 @@ add_custom_target(benchmark DEPENDS
     "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_dt.txt"
     "${CMAKE_CURRENT_BINARY_DIR}/sputnipic/sputnipic_result.txt"
 )
+
+# plots
+
+configure_file(make_plots.py make_plots.py COPYONLY)
+
+add_custom_target(plots 
+    COMMAND python make_plots.py
+    DEPENDS benchmark
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    USES_TERMINAL
+)
