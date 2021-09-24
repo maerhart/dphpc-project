@@ -45,7 +45,7 @@ __device__ ThreadPrivateState::Holder::Holder(const Context& ctx) {
     assert(ctx.valid());
     LOG("initializeThreadPrivateState");
     if (0 == sharedState().gridRank()) {
-        gThreadLocalState = (ThreadPrivateState*)malloc(sharedState().gridSize() * sizeof(ThreadPrivateState));
+        gThreadLocalState = (ThreadPrivateState*)malloc(sharedState().activeGridSize() * sizeof(ThreadPrivateState));
         assert(gThreadLocalState);
         //__threadfence_system(); // not required anymore, barrier makes sure this change is visible before
     }

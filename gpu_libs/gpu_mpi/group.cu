@@ -22,7 +22,7 @@ __device__ void initializeGlobalGroups() {
         MPI_GROUP_EMPTY = new MPI_Group_impl;
         
         MPI_GROUP_WORLD = new MPI_Group_impl;
-        int size = CudaMPI::sharedState().gridSize();
+        int size = CudaMPI::sharedState().activeGridSize();
         MPI_GROUP_WORLD->ranks.resize(size);
         for (int i = 0; i < size; ++i) {
             MPI_GROUP_WORLD->ranks[i] = i;

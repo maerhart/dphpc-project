@@ -478,6 +478,7 @@ private:
         : sharedThreadState(ctx.numThreads, ctx.recvListSize)
         , deviceToHostCommunicator(ctx.deviceToHostQueueSize, ctx.numThreads)
         , freeManagedMemory(ctx.freeMemorySize)
+        , numThreads(ctx.numThreads)
         , returnValue(0)
         , bar(0)
     {
@@ -504,7 +505,13 @@ public:
         return cooperative_groups::details::grid::thread_rank();
     }
 
-    __device__ int gridSize() {
+    // activeGridSize <= totalGridSize
+    __device__ int activeGridSize() {
+        return numThreads;
+    }
+
+    // totalGridSize = blockSize * gridSize  
+    __device__ int totalGridSize() {
         return cooperative_groups::details::grid::size();
     }
 
@@ -520,6 +527,7 @@ public:
 
     FreeManagedMemory freeManagedMemory;
 
+    int numThreads;
     int returnValue;
     unsigned int bar;
 };

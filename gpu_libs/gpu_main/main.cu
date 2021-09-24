@@ -46,7 +46,8 @@ void* copyArgsToUnifiedMemory(int argc, char** argv) {
  * Return new argc: everything after "---gpumpi"
  */
 int parseGPUMPIArgs(int argc, char** argv, 
-    unsigned& blocksPerGrid, unsigned& threadsPerBlock, size_t& stackSize, size_t& heapSize, unsigned& pendingBufferSize) 
+    size_t& numProcs, unsigned& blocksPerGrid, unsigned& threadsPerBlock,
+    size_t& stackSize, size_t& heapSize, unsigned& pendingBufferSize) 
 {
     int trippleDashPosition = -1;
     for (int i = 0; i < argc; i++) {
@@ -67,8 +68,9 @@ int parseGPUMPIArgs(int argc, char** argv,
     cxxopts::Options options("GPU MPI", "GPU MPI");
 
     options.add_options()
-        ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<unsigned>()->default_value("1"))
-        ("b,threadsPerBlock", "Threads per block", cxxopts::value<unsigned>()->default_value("1"))
+        ("n,numProcs", "Total number of processes", cxxopts::value<size_t>()->default_value("0"))
+        ("g,blocksPerGrid", "Blocks per grid", cxxopts::value<unsigned>()->default_value("0"))
+        ("b,threadsPerBlock", "Threads per block", cxxopts::value<unsigned>()->default_value("0"))
         ("s,stackSize", "Override stack size limit on GPU (bytes)", cxxopts::value<size_t>()->default_value("1024"))
         ("p,heapSize", "Override heap size limit on GPU (bytes)", cxxopts::value<size_t>()->default_value("0"))
         ("e,pendingBufferSize", "Override size of thread-local buffer of pending messages", cxxopts::value<unsigned>()->default_value("1024"))
@@ -84,6 +86,7 @@ int parseGPUMPIArgs(int argc, char** argv,
         exit(0);
     }
 
+    numProcs = result["numProcs"].as<size_t>();
     blocksPerGrid = result["blocksPerGrid"].as<unsigned>();
     threadsPerBlock = result["threadsPerBlock"].as<unsigned>();
     stackSize = result["stackSize"].as<size_t>();
@@ -99,6 +102,9 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
                                     CudaMPI::SharedState* sharedState,
                                     CudaMPI::ThreadPrivateState::Context threadPrivateStateContext)
 {
+    // finish extra threads launched because of the requirement to be a factor of block size
+    if (sharedState->gridRank() > sharedState->activeGridSize()) return;
+
     CudaMPI::setSharedState(sharedState);
     CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
 
@@ -134,28 +140,58 @@ int main(int argc, char* argv[]) {
     int deviceCount = 0;
     CUDA_CHECK(cudaGetDeviceCount(&deviceCount));
 
+    size_t numProcs = 0;
     unsigned blocksPerGrid = 0;
     unsigned threadsPerBlock = 0;
     size_t stackSize = 0;
     size_t heapSize = 0;
     unsigned pendingBufferSize = 0;
 
-    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, blocksPerGrid, threadsPerBlock, stackSize, heapSize, pendingBufferSize);
+    int argcWithoutGPUMPI = parseGPUMPIArgs(argc, argv, numProcs, blocksPerGrid, threadsPerBlock, stackSize, heapSize, pendingBufferSize);
 
     int computeCapabilityMajor = 0;
     CUDA_CHECK(cudaDeviceGetAttribute(&computeCapabilityMajor, cudaDevAttrComputeCapabilityMajor, /* device */ 0));
     bool hasIndependentThreadScheduling = computeCapabilityMajor >= 7;
 
+    if (!hasIndependentThreadScheduling && threadsPerBlock == 0) {
+        threadsPerBlock = 1;
+    }
     if (!hasIndependentThreadScheduling && threadsPerBlock > 1) {
-        printf("GPU doesn't support independent thread scheduling. The max threads per block is limited to 1, while %u requested.\n", threadsPerBlock);
-        printf("Exitting...\n");
+        printf("GPUMPI: GPU doesn't support independent thread scheduling. The max threads per block is limited to 1, while %u requested.\n", threadsPerBlock);
+        printf("GPUMPI: Exitting...\n");
         exit(1);
     }
 
-    if (blocksPerGrid * threadsPerBlock > getMaxRanks()) {
-        printf("You trying to use more threads than supported by GPU MPI. You can increase the number of threads by\n");
-        printf("overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
-        printf("Exitting...\n");
+    // try to intelligently pick the best allocation based on user requirements
+    if (numProcs == 0) {
+        if (blocksPerGrid == 0) blocksPerGrid = 1;
+        if (threadsPerBlock == 0) threadsPerBlock = 1;
+        numProcs = blocksPerGrid * threadsPerBlock;
+    } else {
+        if (threadsPerBlock == 0) {
+            int minGridSize = 0;
+            int blockSize = 0;
+            CUDA_CHECK(cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, __gpu_main_caller, /*dynamicSMemSize*/ 0, /*blockSizeLimit*/ 0));
+            (void)minGridSize; // unused
+            threadsPerBlock = blockSize;
+        }
+
+        if (blocksPerGrid == 0) {
+            blocksPerGrid = (numProcs / threadsPerBlock) + ((numProcs % threadsPerBlock) ? 1 : 0);
+        }
+    }
+
+    if (numProcs > blocksPerGrid * threadsPerBlock) {
+        printf("GPUMPI: Requested number of processes %zu can't be allocated on %u blocks and %u threads\n", numProcs, blocksPerGrid, threadsPerBlock);
+        printf("GPUMPI: Exitting...\n");
+        exit(1);
+    }
+    printf("GPUMPI: Using %zu mpi processes with %u blocks and %u threads on GPU\n", numProcs, blocksPerGrid, threadsPerBlock);
+
+    if (numProcs > getMaxRanks()) {
+        printf("GPUMPI: You trying to use more threads than supported by GPU MPI."
+               "You can increase the number of threads by overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
+        printf("GPUMPI: Exitting...\n");
         exit(1);
     }
 
@@ -176,8 +212,8 @@ int main(int argc, char* argv[]) {
     printf("GPUMPI: Max number of blocks is %d (for %d thread(s) per block)\n", maxBlocks, threadsPerBlock);
     
     if (blocksPerGrid > maxBlocks) {
-        printf("The requested number of blocks (%d) exceeds the maximum number of blocks (%d) supported by GPU.\n", blocksPerGrid, maxBlocks);
-        printf("Exitting...\n");
+        printf("GPUMPI: The requested number of blocks (%d) exceeds the maximum number of blocks (%d) supported by GPU.\n", blocksPerGrid, maxBlocks);
+        printf("GPUMPI: Exitting...\n");
         exit(1);
     }
 
@@ -188,7 +224,7 @@ int main(int argc, char* argv[]) {
 
     // allocate memory for communication
     CudaMPI::SharedState::Context sharedStateContext;
-    sharedStateContext.numThreads = blocksPerGrid * threadsPerBlock;
+    sharedStateContext.numThreads = numProcs;
     sharedStateContext.recvListSize = 16;
 
     CudaMPI::SharedState::Holder sharedStateHolder(sharedStateContext);
