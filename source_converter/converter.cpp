@@ -55,6 +55,13 @@ public :
                 clang::FunctionTypeLoc ftl = tl.getAsAdjusted<FunctionTypeLoc>();
                 mRewriter.ReplaceText(ftl.getParensRange(), "(int argc, char** argv)");
 
+                // Insert function to query maximum supported number of threads
+                mRewriter.InsertTextAfterToken(func->getEndLoc(),
+                    "\n"
+                    "__device__ int __gpu_max_threads() {\n"
+                    "    return " + std::to_string(getMaxRanks()) + ";\n"
+                    "}\n"
+                );
             }
             //llvm::errs() << "Annotating function " << func->getName() << " with __device__\n";
             SourceLocation unexpandedLocation = func->getSourceRange().getBegin();

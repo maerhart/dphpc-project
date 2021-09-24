@@ -97,13 +97,28 @@ int parseGPUMPIArgs(int argc, char** argv,
 }
 
 extern __device__ int __gpu_main(int argc, char* argv[]);
+extern __device__ int __gpu_max_threads();
 
 __global__ void __gpu_main_caller(int argc, char* argv[],
                                     CudaMPI::SharedState* sharedState,
                                     CudaMPI::ThreadPrivateState::Context threadPrivateStateContext)
 {
+    int grid_rank = sharedState->gridRank();
+    int active_grid_size = sharedState->activeGridSize();
+
     // finish extra threads launched because of the requirement to be a factor of block size
-    if (sharedState->gridRank() > sharedState->activeGridSize()) return;
+    if (grid_rank > active_grid_size) return;
+
+    int max_threads = __gpu_max_threads();
+    if (max_threads < active_grid_size) {
+        if (sharedState->gridRank() == 0) {
+            printf("GPUMPI: Requested number of threads is %d but program is compiled with max %d threads!\n", active_grid_size, max_threads);
+            printf("GPUMPI: You can increase the number of threads by overriding GPU_MPI_MAX_RANKS environment variable and recompiling the project.\n");
+            printf("GPUMPI: Exitting...\n");
+            CudaMPI::recordError("Compiled max number of threads is smaller than requested!");
+        }
+        return;
+    }
 
     CudaMPI::setSharedState(sharedState);
     CudaMPI::ThreadPrivateState::Holder threadPrivateStateHolder(threadPrivateStateContext);
@@ -112,24 +127,6 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
     if (returnValue != 0) {
         sharedState->returnValue = 1;
     }
-}
-
-
-// TODO: FIX. this is copypasted from converter.cpp, dangerous constant can be changed
-const char* GPU_MPI_MAX_RANKS = "GPU_MPI_MAX_RANKS";
-int getMaxRanks() {
-    int res = 1024;
-
-    char* maxRanks = getenv(GPU_MPI_MAX_RANKS);
-    if (maxRanks) {
-        res = atoi(maxRanks);
-        if (res <= 0) {
-            std::cerr << "ERROR: " << GPU_MPI_MAX_RANKS << " environment variable should contain number of ranks!\n";
-            exit(1);
-        }
-    }
-
-    return res;
 }
 
 
@@ -187,13 +184,6 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
     printf("GPUMPI: Using %zu mpi processes with %u blocks and %u threads on GPU\n", numProcs, blocksPerGrid, threadsPerBlock);
-
-    if (numProcs > getMaxRanks()) {
-        printf("GPUMPI: You trying to use more threads than supported by GPU MPI."
-               "You can increase the number of threads by overriding %s environment variable and recompiling the project.\n", GPU_MPI_MAX_RANKS);
-        printf("GPUMPI: Exitting...\n");
-        exit(1);
-    }
 
     int blocksPerMP = -1;
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocksPerMP, __gpu_main_caller, threadsPerBlock, /*sharedMem*/ 0));
