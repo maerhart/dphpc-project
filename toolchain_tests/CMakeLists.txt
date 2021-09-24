@@ -54,8 +54,28 @@ add_test(
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/npb"
 )
 
+configure_file(npb/dt_benchmark.sh npb/dt_benchmark.sh COPYONLY)
+configure_file(npb/is_benchmark.sh npb/is_benchmark.sh COPYONLY)
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_is.txt" 
+    COMMAND ${BASH_PROGRAM} is_benchmark.sh
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/npb"
+    USES_TERMINAL
+)
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_dt.txt" 
+    COMMAND ${BASH_PROGRAM} dt_benchmark.sh
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/npb"
+    USES_TERMINAL
+)
 
 # benchmark
 
-add_custom_target(benchmark DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_gpu.txt" "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_cpu.txt")
-
+add_custom_target(benchmark DEPENDS
+    "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_gpu.txt"
+    "${CMAKE_CURRENT_BINARY_DIR}/pi/plot_pi_cpu.txt"
+    "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_is.txt"
+    "${CMAKE_CURRENT_BINARY_DIR}/npb/results_nas_dt.txt"
+)
