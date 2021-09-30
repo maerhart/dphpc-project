@@ -107,7 +107,7 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
     int active_grid_size = sharedState->activeGridSize();
 
     // finish extra threads launched because of the requirement to be a factor of block size
-    if (grid_rank > active_grid_size) return;
+    if (grid_rank >= active_grid_size) return;
 
     int max_threads = __gpu_max_threads();
     if (max_threads < active_grid_size) {
