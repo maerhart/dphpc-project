@@ -1,4 +1,4 @@
-#include <cuda_runtime.h>
+#include "cuda_runtime.h"
 #include <device_launch_parameters.h>
 #include <stdio.h>
 
@@ -24,7 +24,7 @@ __global__ void sum_values_and_allocate(int size, int* res) {
     res[id] = sum;
 }
 
-int main(int argc, char **argc) {
+int main(int argc, char **argv) {
     cudaError_t cuda_status;
     printf("%s Starting...\n", argv[0]);
     int coalesced = (atoi(argv[2]) == 1) ? 1 : 0;
@@ -42,12 +42,12 @@ int main(int argc, char **argc) {
     cudaSetDevice(dev);
 
     int threads_per_block = 1024;
-    int blocks = 1024 * 10;
+    int blocks = 1024;
     int total_threads = threads_per_block * blocks;
 
     int* res;
     cudaMalloc((void**)&res, total_threads * sizeof(int));
-    int alloction_size = bytes;
+    int allocation_size = bytes;
     int allocation_per_thread = allocation_size / total_threads;
 
     cudaEvent_t start, stop;
@@ -64,19 +64,19 @@ int main(int argc, char **argc) {
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
-        printf("cudaMalloc(%d) over %d threads: Time elapsed %f ms\n", allocation_per_thread, total_threads, ms_sum_and_alloc);
+        printf("cudaMalloc(%d) over %d threads: Time elapsed %f ms\n", allocation_per_thread, total_threads, ms);
     } else {
         cudaEventCreate(&start);
         int* array;
         cudaMalloc((void**)&array, allocation_size);
-        sum_values_in_allocated_array<<<blocks_per_launch, threads_per_block>>>(array, allocation_per_thread / sizeof(int), res);
+        sum_values_in_allocated_array<<<blocks, threads_per_block>>>(array, allocation_per_thread / sizeof(int), res);
         cudaFree(array);
         cudaEventRecord(stop);
 
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
-        printf("cudaMalloc(%d) coalesced: Time elapsed %f ms\n", allocation_size, ms_sum);
+        printf("cudaMalloc(%d) coalesced: Time elapsed %f ms\n", allocation_size, ms);
     }
 
     if (cuda_status != cudaSuccess) {
