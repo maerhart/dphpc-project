@@ -1,22 +1,31 @@
 ﻿#include <math.h>
 #include <iostream>
 #include <assert.h>
+#include <tuple>
 
 const int LOG_MIN_BLOCK_SIZE = 3; // allocate at least eight bytes
 const size_t MIN_BLOCK_SIZE = pow(2.0, LOG_MIN_BLOCK_SIZE);
 const size_t MAX_BLOCK_SIZE = pow(2.0, 32.0); // has to be power of 2 -- allocate at most 4 GB
-const int LEN_FREE_LIST = ((int) log2(MAX_BLOCK_SIZE)) - ((int) log2(MIN_BLOCK_SIZE)) + 1; // freelist[i] contains list of blocks of size at least 2 ^ (i + log2(MIN_BLOCK_SIZE)) (excluding header size)
+const int LEN_FREE_LIST = ((int) log2(MAX_BLOCK_SIZE)) - ((int) log2(MIN_BLOCK_SIZE)) + 1;
+
+/* free list design:
+ *
+ * freelist[i] contains linked list of blocks with payload size of at least 2 ^ (i + log2(MIN_BLOCK_SIZE)) bytes (excluding header size) 
+ * where the last block contains null as the next pointer. (i.e. list of size 0 if just a null pointer)
+ *
+ *
+ */
 
 
 // header of a free block
 struct free_header {
-	int64_t size;
+	int64_t size; // size of the payload (excluding header size)
 	free_header* next;
 };
 
 struct full_header {
 	// negative means free
-	int64_t size;
+	int64_t size; // size of the payload (excluding header size)
 	// pointer to previous block
 	full_header* prev;
 };
@@ -56,9 +65,62 @@ int get_free_list_insertion_index(int64_t size) {
 }
 
 
+/**
+ * Initialize the free list
+ *
+ * @param mem_size Number of bytes to be used for first blocks and free list
+ * @return pointer to free list
+ *         pointer to start of usable memory range
+ *         pointer to end of usable memory range
+ */
+std::tuple<free_header**, void*, void*> init_free_list(size_t mem_size) {
+
+	// check that size big enough
+	size_t size_free_list = sizeof(free_header*) * LEN_FREE_LIST;
+	if (mem_size < size_free_list + sizeof(full_header) + MIN_BLOCK_SIZE) {
+		assert(false); // TODO how to throw
+	}
+
+  	// create empty free lists
+	free_header** free_list = (free_header**)malloc(size_free_list);  // TODO malloc only once?
+	for (int i = 0; i < LEN_FREE_LIST; i++) {
+	  free_list[i] = NULL;
+	}
+
+	size_t available_mem = mem_size - size_free_list;
+  
+  	// allocate memory
+	free_header* initial_block = (free_header*)malloc(available_mem);
+
+	// build initial block
+	size_t payload_size = available_mem - sizeof(full_header);
+	initial_block->size = payload_size;
+	initial_block->next = NULL;
+
+	// insert block into free list
+	free_list[get_free_list_insertion_index(payload_size)] = initial_block;
+
+	// compute range of usable memory
+	void* range_start = initial_block;
+	void* range_end = ((char*) initial_block) + sizeof(full_header) + payload_size;
+
+	return std::make_tuple(free_list, range_start, range_end);
+}
+
+
 // size in bytes
 void* custom_malloc(size_t size, free_header** free_list, const void* range_start, const void* range_end)
 {
+  	// check if size valid
+  	if (size < 1) {
+	  assert(false); // TODO how to throw here? or return NULL?
+	} else if (size > MAX_BLOCK_SIZE) {
+	  assert(false); // TODO how to throw here? or return NULL?
+	}
+
+	int free_list_index = get_free_list_extraction_index(size);
+
+
   	// TODO check size legal?
 	
   
@@ -143,6 +205,7 @@ void test()
 		assert(get_free_list_extraction_index(MAX_BLOCK_SIZE - 1) == LEN_FREE_LIST - 1);
 	}
 
+	/*
 	// repeatedly allocate individual ints and sum them up
 	{
 		#define MEM_SIZE 1024
@@ -209,6 +272,7 @@ void test()
 		// clean up
 		free(initial_block);
 	}
+	*/
 
 }
 
@@ -217,6 +281,11 @@ int main(int argc, char* argv[])
 	// run some simple unit tests, only in debug mode!
 	test();
 
+	std::tuple<free_header**, void*, void*> init_data = init_free_list(10000); // contains free list, range_start, range_end
+
+
+	int* test_int = (int*)custom_malloc(sizeof(int), std::get<0>(init_data), std::get<1>(init_data), std::get<2>(init_data));
+	//*test_int = 5;
 
 	return 0;
 }
