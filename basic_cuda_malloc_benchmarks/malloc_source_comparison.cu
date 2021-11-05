@@ -2,53 +2,72 @@
 #include <device_launch_parameters.h>
 #include <stdio.h>
 
-__global__ void sum_values_in_allocated_array(int* array, int range, int* res) {
-    int sum = 0;
-    int start = blockIdx.x * blockDim.x + threadIdx.x;
-    for(int i = start; i < start + range; i++) {
-        sum += (i+array[i]);
+__global__ void sum_values_and_allocate(long value, int* res) {
+    int val = 0;
+    
+    int *array = (int *)malloc(value * sizeof(int));
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
+   
+    if(array == NULL) {
+	val = 1;
     }
-    res[start] = sum;
+    for(long i = 0; i < value; i++) {
+	if(array != NULL) array[i] = i/3;
+    }
+    free(array);
+    res[id] = val;
 }
 
-__global__ void sum_values_and_allocate(int size, int* res) {
-    int sum = 0;
-    int *array;
-    
-    cudaMalloc(&array, size);
-    int id = blockIdx.x * blockDim.x + threadIdx.x;
-    for(int i = 0; i < size; i++) {
-        sum += (i+array[i]);
+__global__ void sum_values_in_allocated_array(int* array, long range, int* res) {
+    int val = 0;
+
+    long start = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(array == NULL) {
+	val = 1;
     }
-    cudaFree(array);
-    res[id] = sum;
+    for(long i = start; i < start + range; i++) {
+	if(array != NULL) array[i] = i/3;
+    }
+    res[start] = val;
 }
 
 int main(int argc, char **argv) {
     cudaError_t cuda_status;
-    printf("%s Starting...\n", argv[0]);
     int coalesced = (atoi(argv[2]) == 1) ? 1 : 0;
-    int bytes = 1 << atoi(argv[1]);
-    if(coalesced > 0) {
-        printf("Benchmarking Coalesced for %d bytes\n", bytes);
-    } else {
-        printf("Benchmarking non coalesced for %d bytes\n", bytes);
+    char *simple_output = argv[3];
+    if(!simple_output) {
+	    printf("%s Starting...\n", argv[0]);
+    }
+    long ints = 1L << atoi(argv[1]);
+    if(!simple_output) {
+	if(coalesced > 0) {
+	    printf("Benchmarking Coalesced for %ld ints\n", ints);
+	} else {
+	    printf("Benchmarking non coalesced for %ld ints\n", ints);
+	}
     }
     // set up device
     int dev = 0;
     cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp, dev);
-    printf("Using Device %d: %s\n", dev, deviceProp.name);
+    if(!simple_output) {
+        printf("Using Device %d: %s\n", dev, deviceProp.name);
+    }
     cudaSetDevice(dev);
 
     int threads_per_block = 1024;
     int blocks = 1024;
+    //2^20
     int total_threads = threads_per_block * blocks;
 
     int* res;
     cudaMalloc((void**)&res, total_threads * sizeof(int));
-    int allocation_size = bytes;
-    int allocation_per_thread = allocation_size / total_threads;
+    cudaMemset(res, 0, total_threads * sizeof(int));
+    int* resCPU = (int *) malloc(total_threads * sizeof(int));
+    long allocation_size = ints;
+    long allocation_per_thread = allocation_size / total_threads;
+    allocation_per_thread = (allocation_per_thread < 1) ? 1 : allocation_per_thread;
 
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
@@ -56,7 +75,7 @@ int main(int argc, char **argv) {
 
     cudaDeviceSynchronize();
     float ms = 0;
-    if(coalesced) {
+    if(!coalesced) {
         cudaEventRecord(start);
         sum_values_and_allocate<<<blocks, threads_per_block>>>(allocation_per_thread, res);
         cudaEventRecord(stop);
@@ -64,23 +83,40 @@ int main(int argc, char **argv) {
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
-        printf("cudaMalloc(%d) over %d threads: Time elapsed %f ms\n", allocation_per_thread, total_threads, ms);
+        if(!simple_output) {
+            printf("cudaMalloc(%ld ints/%ld bytes) over %d threads: Time elapsed %f ms\n", allocation_per_thread, allocation_per_thread * sizeof(int), total_threads, ms);
+	} else {
+	    printf("%f ", ms);
+	}
     } else {
-        cudaEventCreate(&start);
+        cudaEventRecord(start);
         int* array;
-        cudaMalloc((void**)&array, allocation_size);
-        sum_values_in_allocated_array<<<blocks, threads_per_block>>>(array, allocation_per_thread / sizeof(int), res);
+        cudaMalloc((void**)&array, allocation_size*sizeof(int));
+        sum_values_in_allocated_array<<<blocks, threads_per_block>>>(array, allocation_per_thread, res);
         cudaFree(array);
         cudaEventRecord(stop);
 
         cudaEventSynchronize(stop);
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
-        printf("cudaMalloc(%d) coalesced: Time elapsed %f ms\n", allocation_size, ms);
+        if(!simple_output) {
+            printf("cudaMalloc(%ld ints/%ld bytes) coalesced: Time elapsed %f ms\n", allocation_size, allocation_size * sizeof(int), ms);
+	} else {
+	    printf("%f ", ms);
+	}
+    }
+    cudaMemcpy(resCPU, res, total_threads * sizeof(int), cudaMemcpyDeviceToHost);
+    int malloc_failures = 0;
+    for(int i = 0; i < total_threads; i++) malloc_failures += resCPU[i];
+
+    if(!simple_output) {
+	printf("%d threads failed to allocate memory\n", malloc_failures);
+    } else {
+	printf("%d\n", malloc_failures);
     }
 
     if (cuda_status != cudaSuccess) {
-        printf("Error: %d\n", cuda_status);
+        printf("Error: %d %s\n", cuda_status, cudaGetErrorString(cuda_status));
         exit(1);
     }
     cudaFree(res);
