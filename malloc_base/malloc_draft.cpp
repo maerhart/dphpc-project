@@ -143,25 +143,79 @@ void test()
 		assert(get_free_list_extraction_index(MAX_BLOCK_SIZE - 1) == LEN_FREE_LIST - 1);
 	}
 
+	// repeatedly allocate individual ints and sum them up
+	{
+		#define MEM_SIZE 1024
+		#define BLOCK_IND 10
+
+		free_header* initial_block = (free_header*)calloc(MEM_SIZE, 1);
+		initial_block->size = MEM_SIZE;
+		initial_block->next = NULL;
+
+		// put block in free list
+		free_header* free_blocks[BLOCK_IND + 1];
+		free_blocks[BLOCK_IND] = initial_block;
+
+		// repeat test multiple times on the same free_blocks datastructure
+		for (int num_runs = 0; num_runs < 10; ++num_runs) {
+
+			// array with results
+			const int num_ints = MEM_SIZE / sizeof(int);
+			int* result[num_ints];
+			int* reference[num_ints];
+
+			// fill available space with ints 0, 1, ...
+			for (int i = 0; i < num_ints; ++i) {
+				// custom malloc
+				int* val = (int*)custom_malloc(sizeof(int), free_blocks, (void*)initial_block, (char*)initial_block + MEM_SIZE);
+				assert(val); // No null pointers
+				*val = i;
+				result[i] = val;
+
+				// reference
+				int* val_ref = (int*)malloc(sizeof(int));
+				assert(val_ref); // No null pointers
+				*val_ref = i;
+				reference[i] = val_ref;
+			}
+
+			// compare results
+			int res_sum = 0;
+			int ref_sum = 0;
+			for (int i = 0; i < num_ints; ++i) {
+
+				res_sum += *(result[i]);
+				ref_sum += *(reference[i]);
+
+				// correct value stored
+				assert(*(result[i]) == i);
+				assert(*(reference[i]) == i);
+			}
+
+			// correct sum
+			assert(ref_sum == (num_ints - 1) * (num_ints) / 2); // analytic solution
+			assert(res_sum == ref_sum); // reference solution
+
+
+			// free for the next round
+			for (int i = 0; i < num_ints; ++i) {
+				custom_free(result[i], free_blocks, (void*)initial_block, (char*)initial_block + MEM_SIZE);
+				free(reference[i]);
+			}
+
+		}
+
+
+		// clean up
+		free(initial_block);
+	}
+
 }
 
 int main(int argc, char* argv[])
 {
 	// run some simple unit tests, only in debug mode!
 	test();
-
-	int mem_size = 16;
-
-	free_header* initial_block = (free_header*)malloc(mem_size);
-	initial_block->size = mem_size;
-	initial_block->next = NULL;
-
-	free_header* free_blocks[LEN_FREE_LIST];
-	free_blocks[get_free_list_insertion_index(mem_size)] = initial_block;
-
-
-	int* test_int = (int*)custom_malloc(sizeof(int), free_blocks, (void*)initial_block, (char*)initial_block + mem_size);
-	//*test_int = 5;
 
 
 	return 0;
