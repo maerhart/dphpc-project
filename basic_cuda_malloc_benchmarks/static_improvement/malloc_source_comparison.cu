@@ -35,7 +35,7 @@ __global__ void sum_values_in_allocated_array(int* array, long range, int* res) 
 int main(int argc, char **argv) {
     cudaError_t cuda_status;
     int coalesced = (atoi(argv[2]) == 1) ? 1 : 0;
-    char *simple_output = argv[3];
+    char *simple_output = argv[5];
     if(!simple_output) {
 	    printf("%s Starting...\n", argv[0]);
     }
@@ -47,6 +47,14 @@ int main(int argc, char **argv) {
 	    printf("Benchmarking non coalesced for %ld ints\n", ints);
 	}
     }
+
+    int threads_per_block = 1 << atoi(argv[3]);
+    // max value is 1024
+    threads_per_block = (threads_per_block > 1024) ? 1024 : threads_per_block;
+    int blocks = 1 << atoi(argv[4]);
+    // max value of concurrently executable blocks is 192 (largest power of 2 is 128)
+    blocks = (blocks > 65535) ? 65535 : blocks;
+
     // set up device
     int dev = 0;
     cudaDeviceProp deviceProp;
@@ -56,8 +64,6 @@ int main(int argc, char **argv) {
     }
     cudaSetDevice(dev);
 
-    int threads_per_block = 1024;
-    int blocks = 1024;
     //2^20
     int total_threads = threads_per_block * blocks;
 
@@ -84,9 +90,9 @@ int main(int argc, char **argv) {
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
         if(!simple_output) {
-            printf("cudaMalloc(%ld ints/%ld bytes) over %d threads: Time elapsed %f ms\n", allocation_per_thread, allocation_per_thread * sizeof(int), total_threads, ms);
+            printf("cudaMalloc(%ld ints/%ld bytes) over %d threads (%d blocks, %d threads per block): Time elapsed %f ms\n", allocation_per_thread, allocation_per_thread * sizeof(int), total_threads, blocks, threads_per_block, ms);
 	} else {
-	    printf("%f ", ms);
+	    printf("%d %d %f ", blocks, threads_per_block, ms);
 	}
     } else {
         cudaEventRecord(start);
@@ -100,9 +106,9 @@ int main(int argc, char **argv) {
         cudaEventElapsedTime(&ms, start, stop);
         cuda_status = cudaDeviceSynchronize();
         if(!simple_output) {
-            printf("cudaMalloc(%ld ints/%ld bytes) coalesced: Time elapsed %f ms\n", allocation_size, allocation_size * sizeof(int), ms);
+            printf("cudaMalloc(%ld ints/%ld bytes) coalesced (%d blocks, %d threads per block): Time elapsed %f ms\n", allocation_size, allocation_size * sizeof(int), blocks, threads_per_block, ms);
 	} else {
-	    printf("%f ", ms);
+	    printf("%d %d %f ", blocks, threads_per_block, ms);
 	}
     }
     cudaMemcpy(resCPU, res, total_threads * sizeof(int), cudaMemcpyDeviceToHost);
