@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
 	cudaMalloc((void***)&block_array, blocks * sizeof(int *));
 	int* array;
 	cudaMalloc((void**)&array, blocks * sizeof(int));
-	cudaMemset(res, 0, blocks * sizeof(int));
+	cudaMemset(array, 0, blocks * sizeof(int));
         cudaEventRecord(start);
         simulate_dynamic_coalescing<<<blocks, threads_per_block>>>(array, block_array, allocation_per_block, res);
         cudaFree(array);
