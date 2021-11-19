@@ -17,7 +17,8 @@ set(CMAKE_CUDA_FLAGS
 add_subdirectory(gpu_libc)
 add_subdirectory(gpu_mpi)
 add_subdirectory(gpu_main)
+add_subdirectory(gpu_malloc)
 
 add_library(gpu_libs INTERFACE)
-target_link_libraries(gpu_libs INTERFACE gpu_libc gpu_mpi gpu_main)
+target_link_libraries(gpu_libs INTERFACE gpu_libc gpu_mpi gpu_main gpu_malloc)
 
