@@ -2,3 +2,5 @@
 build/
 *.Rhistory
 tags
+llvm/
+.cache/

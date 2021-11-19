@@ -21,5 +21,6 @@
 #define posix_memalign __gpu_posix_memalign
 #define malloc __gpu_malloc
 #define calloc __gpu_calloc
+#define free __gpu_free
 
 #endif // STDLIB_H_CUH

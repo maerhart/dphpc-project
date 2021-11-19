@@ -166,13 +166,13 @@ public :
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCallInMain")) {
             mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", true");
-            SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
-            mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
+            // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
+            // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCall")) {
             mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
-            SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
-            mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
+            // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
+            // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("callToAddArg")) {
             mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
