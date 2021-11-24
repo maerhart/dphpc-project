@@ -1,8 +1,9 @@
 #include <atomic>
 #include <assert.h>
+#include <iostream>
 
 // baseline using std malloc/free
-__device__ void* __gpu_malloc_baseline(size_t size) {
+__device__ void* malloc_baseline(size_t size) {
     void* ptr = malloc(size);
     #ifndef NDEBUG
     if (!ptr) {
@@ -12,7 +13,7 @@ __device__ void* __gpu_malloc_baseline(size_t size) {
     return ptr;
 }
 
-__device__ void* __gpu_free_baseline(void *memptr) {
+__device__ void free_baseline(void *memptr) {
     free(memptr);
 }
 
@@ -32,70 +33,88 @@ __device__ void* __gpu_malloc_v1(size_t size) {
     return ptr;
 }
 
-__device__ void* __gpu_free_v1(void* memptr) {
+__device__ void __gpu_free_v1(void* memptr) {
     free(memptr);
 }
 
 
 
 // repeatedly allocate individual ints and sum them up
-void test() {
-	const int num_ints = 100; // need enough space for num_ints ints and free list and headers
-
-	// repeat test multiple times
-	for (int num_runs = 0; num_runs < 10; ++num_runs) {
-
-		// array with results
-		int* result[num_ints];
-		int* reference[num_ints];
+__global__ void test(int *resulting_sums) {
 
 
-		// fill available space with ints 0, 1, ...
-		for (int i = 0; i < num_ints; ++i) {
-			// custom malloc
-			int* val = (int*)__gpu_malloc_baseline(sizeof(int));
-			assert(val); // No null pointers
-			*val = i;
-			result[i] = val;
+	int* val = (int*)malloc_baseline(sizeof(int));
+	*val = 5;
+	//printf("test");
+	int id = (blockIdx.x*blockDim.x + threadIdx.x);
+	resulting_sums[id] = *val;
+	free_baseline(val);
 
-			// reference
-			int* val_ref = (int*)malloc(sizeof(int));
-			assert(val_ref); // No null pointers
-			*val_ref = i;
-			reference[i] = val_ref;
-		}
+	/*
+	// array with results
+	const int num_ints = 100;
+	int* result[num_ints];
 
-		// compare results
-		int res_sum = 0;
-		int ref_sum = 0;
-		for (int i = 0; i < num_ints; ++i) {
-
-			res_sum += *(result[i]);
-			ref_sum += *(reference[i]);
-
-			// correct value stored
-			assert(*(result[i]) == i);
-			assert(*(reference[i]) == i);
-		}
-
-		// correct sum
-		assert(ref_sum == (num_ints - 1) * (num_ints) / 2); // analytic solution
-		assert(res_sum == ref_sum); // reference solution
-
-		// free for the next round
-		for (int i = 0; i < num_ints; ++i) {
-			__gpu_free_baseline(result[i]);
-			free(reference[i]);
-		}
+	// fill available space with ints 0, 1, ...
+	for (int i = 0; i < num_ints; ++i) {
+		// custom malloc
+		int* val = (int*)malloc_baseline(sizeof(int));
+		assert(val); // No null pointers
+		*val = i;
+		result[i] = val;
 
 	}
+
+	// compare results
+	int res_sum = 0;
+	for (int i = 0; i < num_ints; ++i) {
+
+		res_sum += *(result[i]);
+
+		// correct value stored
+		assert(*(result[i]) == i);
+	}
+
+	// correct sum
+	assert(res_sum == (num_ints - 1) * (num_ints) / 2); // analytic solution
+	int id = (blockIdx.x*blockDim.x + threadIdx.x);
+	resulting_sums[id] = res_sum;
+
+	// free for the next round
+	for (int i = 0; i < num_ints; ++i) {
+		free_baseline(result[i]);
+	}
+	*/
+
 }
 
 int main(int argc, char* argv[]) {
 	// run some simple unit tests, only in debug mode!
-	test();
+	int blocks = 1;
+	int threads_per_block = 32;
+	int total_threads = blocks * threads_per_block;
 
-	std::cout << "Tests passed" << std::endl;
+	int resulting_sums[total_threads];
+	int *d_resulting_sums;
+	cudaMalloc(&d_resulting_sums, total_threads*sizeof(int));	
+
+	test<<<blocks, threads_per_block>>>(d_resulting_sums);
+	cudaDeviceSynchronize(); // to allow for printf in kernel code
+	cudaMemcpy(resulting_sums, d_resulting_sums, total_threads*sizeof(int), cudaMemcpyDeviceToHost);
+
+	bool passed = true;
+	for (int i = 0; i < total_threads; ++i) {
+		if (resulting_sums[i] != 5) {
+			passed = false;
+		}
+	}
+
+	if (passed) {
+		std::cout << "Tests passed" << std::endl;
+	} 
+	else {
+		std::cout << "Failed" << std::endl;
+	}
 
 	return 0;
 }
