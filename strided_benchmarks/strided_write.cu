@@ -15,7 +15,7 @@
  */
 __global__ void strided_write(int empty_padding, float* arr, int num_floats, clock_t* runtime) {
 	int id = (blockIdx.x*blockDim.x + threadIdx.x);
-	float* ptr = &arr[id * (empty_padding + num_floats)];
+	float* ptr = arr + id * (empty_padding + num_floats);
 
 	clock_t start_time = clock();
 
@@ -28,15 +28,50 @@ __global__ void strided_write(int empty_padding, float* arr, int num_floats, clo
 }
 
 /**
+ * Allocate one array for each block and write floats into it, leaving unused space between different threads' array segments
+ *
+ * @param empty_padding How many 4-byte segments to leave empty at end of thread segment
+ * @param arr Pointer to allocated array
+ * @param num_floats Number of floats to write
+ * @param runtime Array to hold the runtime of each thread
+ */
+__global__ void strided_write_block_malloc(int empty_padding, int num_floats, clock_t* runtime) {
+
+	__shared__ float* block_arr;
+
+	if (threadIdx.x == 0) {
+		block_arr = (float*) malloc(blockDim.x * sizeof(float) * (empty_padding + num_floats));
+	}
+	__syncthreads();
+
+	int id = (blockIdx.x*blockDim.x + threadIdx.x);
+	float* ptr = block_arr + id * (empty_padding + num_floats);
+
+	clock_t start_time = clock();
+
+	for (int i = 0; i < num_floats; i++) {
+		ptr[i] = id + i;
+	}
+
+	clock_t end_time = clock();
+	runtime[id] = end_time - start_time;
+
+	__syncthreads();
+	if (threadIdx.x == 0) {
+		free(block_arr);
+	}
+}
+
+/**
  * Malloc an array and Write floats into it
  *
  * @param empty_padding How many 4-byte segments to leave empty at end of thread's malloc segement
  * @param num_floats Number of floats to write
  * @param runtime Array to hold the runtime of each thread
  */
-__global__ void malloc_write(int empty_padding, int num_floats, clock_t* runtime) {
+__global__ void strided_write_all_malloc(int empty_padding, int num_floats, clock_t* runtime) {
 	int id = (blockIdx.x*blockDim.x + threadIdx.x);
-	float* ptr = (float*) malloc(sizeof(float) * num_floats);
+	float* ptr = (float*) malloc(sizeof(float) * (num_floats + empty_padding));
 
 
 	clock_t start_time = clock();
@@ -56,7 +91,7 @@ void run_strided_write(clock_t* runtime, int blocks, int threads_per_block, int 
 
 	// setup array to write to
 	float* arr;
-	cudaMalloc((void**)&arr, total_threads * sizeof(float));
+	cudaMalloc((void**)&arr, total_threads * sizeof(float) * (num_floats + empty_padding));
 
 	strided_write<<<blocks, threads_per_block>>>(empty_padding, arr, num_floats, runtime);
 
@@ -93,13 +128,24 @@ int main(int argc, char **argv) {
 				run_strided_write(runtimes, b, t, empty_padding, num_floats);
 			}
 		     );
-	print_arr(max_runtimes, num_runs);
+	print_arr(mean_runtimes, num_runs);
+	//print_arr(max_runtimes, num_runs);
 
-	// run malloc write
+	// run block malloc write
 	run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
 			[empty_padding, num_floats](clock_t* runtimes, int b, int t) -> void {
-				malloc_write<<<b, t>>>(empty_padding, num_floats, runtimes);
+				strided_write_block_malloc<<<b, t>>>(empty_padding, num_floats, runtimes);
 			}
 		     );
-	print_arr(max_runtimes, num_runs);
+	print_arr(mean_runtimes, num_runs);
+	//print_arr(max_runtimes, num_runs);
+
+	// run all malloc write
+	run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
+			[empty_padding, num_floats](clock_t* runtimes, int b, int t) -> void {
+				strided_write_all_malloc<<<b, t>>>(empty_padding, num_floats, runtimes);
+			}
+		     );
+	print_arr(mean_runtimes, num_runs);
+	//print_arr(max_runtimes, num_runs);
 }
