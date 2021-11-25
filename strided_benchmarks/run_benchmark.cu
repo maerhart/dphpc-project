@@ -18,7 +18,7 @@ void run_benchmark(int num_runs, int num_warmup, double* mean_runtimes, double* 
 
         // setup array with runtimes
         clock_t* runtimes_device;
-        cudaMalloc((void**)&runtimes_device, total_threads * sizeof(float));
+        cudaMalloc((void**)&runtimes_device, total_threads * sizeof(clock_t));
 
         for (int i = 0; i < num_runs + num_warmup; i++) {
 
@@ -32,13 +32,13 @@ void run_benchmark(int num_runs, int num_warmup, double* mean_runtimes, double* 
                         // retrieve results
                         int run_id = i - num_warmup;
                         clock_t runtimes_host[total_threads];
-                        cudaMemcpy(runtimes_host, runtimes_device, total_threads * sizeof(float), cudaMemcpyDeviceToHost);
+                        cudaMemcpy(runtimes_host, runtimes_device, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost);
 
                         double sum = 0;
                         double max_time = 0;
                         for (int j = 0; j < total_threads; j++) {
-                                sum += runtimes_host[i];
-                                max_time = std::max(max_time, (double) runtimes_host[i]);
+                                sum += runtimes_host[j];
+                                max_time = std::max(max_time, (double) runtimes_host[j]);
                         }
                         mean_runtimes[run_id] = sum / total_threads;
                         max_runtimes[run_id] = max_time;
