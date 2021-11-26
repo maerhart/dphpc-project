@@ -1,5 +1,6 @@
 #include <functional>
 #include <iostream>
+#include <assert.h>
 #include "run_benchmark.cu"
 
 
@@ -25,6 +26,10 @@ __global__ void strided_write(int empty_padding, float* arr, int num_floats, clo
 
 	clock_t end_time = clock();
 	runtime[id] = end_time - start_time;
+	if (end_time < start_time) {
+		printf("Clock overflow\n");
+		assert(false);
+	}
 }
 
 /**
@@ -37,15 +42,19 @@ __global__ void strided_write(int empty_padding, float* arr, int num_floats, clo
  */
 __global__ void strided_write_block_malloc(int empty_padding, int num_floats, clock_t* runtime) {
 
+	// allocate shared array for entire block
 	__shared__ float* block_arr;
-
 	if (threadIdx.x == 0) {
 		block_arr = (float*) malloc(blockDim.x * sizeof(float) * (empty_padding + num_floats));
+		if (!block_arr) {
+			printf("Failed to malloc %d floats\n", blockDim.x * (empty_padding + num_floats));
+		}
 	}
 	__syncthreads();
+	assert(block_arr != NULL);
 
 	int id = (blockIdx.x*blockDim.x + threadIdx.x);
-	float* ptr = block_arr + id * (empty_padding + num_floats);
+	float* ptr = block_arr + threadIdx.x * (empty_padding + num_floats);
 
 	clock_t start_time = clock();
 
@@ -55,6 +64,10 @@ __global__ void strided_write_block_malloc(int empty_padding, int num_floats, cl
 
 	clock_t end_time = clock();
 	runtime[id] = end_time - start_time;
+	if (end_time < start_time) {
+		printf("Clock overflow\n");
+		assert(false);
+	}
 
 	__syncthreads();
 	if (threadIdx.x == 0) {
@@ -72,6 +85,10 @@ __global__ void strided_write_block_malloc(int empty_padding, int num_floats, cl
 __global__ void strided_write_all_malloc(int empty_padding, int num_floats, clock_t* runtime) {
 	int id = (blockIdx.x*blockDim.x + threadIdx.x);
 	float* ptr = (float*) malloc(sizeof(float) * (num_floats + empty_padding));
+	if (!ptr) {
+		printf("Failed to malloc %d floats\n", (empty_padding + num_floats));
+		assert(false);
+	}
 
 
 	clock_t start_time = clock();
@@ -82,6 +99,10 @@ __global__ void strided_write_all_malloc(int empty_padding, int num_floats, cloc
 
 	clock_t end_time = clock();
 	runtime[id] = end_time - start_time;
+	if (end_time < start_time) {
+		printf("Clock overflow\n");
+		assert(false);
+	}
 
 	free(ptr);
 }

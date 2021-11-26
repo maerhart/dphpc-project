@@ -24,19 +24,29 @@ void run_benchmark(int num_runs, int num_warmup, double* mean_runtimes, double* 
 
                 // run benchmark, wait for exec to finish
                 run_benchmark(runtimes_device, blocks, threads_per_block);
-
                 cudaDeviceSynchronize();
 
-                
+		// check for error
+		cudaError_t err = cudaGetLastError();
+		if (err != cudaSuccess) {
+		   std::cout << "CUDA ERROR: " << cudaGetErrorString(err) << std::endl;
+		   exit(-1);
+     		}
+
                 if (i >= num_warmup) {
                         // retrieve results
                         int run_id = i - num_warmup;
                         clock_t runtimes_host[total_threads];
-                        cudaMemcpy(runtimes_host, runtimes_device, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost);
+                        if (cudaMemcpy(runtimes_host, runtimes_device, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost) != cudaSuccess) {
+				std::cout << "cudaMemcpy failed" << std::endl;
+				exit(-1);
+			}
+                	cudaDeviceSynchronize();
 
                         double sum = 0;
                         double max_time = 0;
                         for (int j = 0; j < total_threads; j++) {
+				assert(runtimes_host[j] >= 0);
                                 sum += runtimes_host[j];
                                 max_time = std::max(max_time, (double) runtimes_host[j]);
                         }
