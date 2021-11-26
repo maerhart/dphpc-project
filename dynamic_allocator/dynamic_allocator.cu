@@ -28,12 +28,14 @@ struct s_header {
 // s_header, blocksize x [pointer to s_header, data]
 __device__ void* malloc_v1(size_t size) {
 	__shared__ void* superblock;
-
 	if (threadIdx.x == 0) {
 		// allocate new superblock
-		superblock = malloc(sizeof(s_header) + blockDim.x * (sizeof(s_header*) + size));
-		if (!superblock) return NULL;
-		
+		int size_superblock = sizeof(s_header) + blockDim.x * (sizeof(s_header*) + size);
+		superblock = malloc(size_superblock);
+		if (!superblock) {
+			printf("V1: failed to allocate %llu bytes on device\n", (long long unsigned)(size_superblock));
+			return NULL;
+		}
 		// initialize header	
 		struct s_header* header;
 		header = (s_header*)superblock;

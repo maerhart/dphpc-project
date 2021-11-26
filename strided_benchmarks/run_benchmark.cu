@@ -31,7 +31,7 @@ void run_benchmark(int num_runs, int num_warmup, double* mean_runtimes, double* 
                 if (i >= num_warmup) {
                         // retrieve results
                         int run_id = i - num_warmup;
-                        clock_t runtimes_host[total_threads];
+                        clock_t* runtimes_host = (clock_t*)malloc(total_threads * sizeof(clock_t));
                         cudaMemcpy(runtimes_host, runtimes_device, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost);
 
                         double sum = 0;
