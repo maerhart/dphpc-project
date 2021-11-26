@@ -32,7 +32,7 @@ __device__ void* malloc_v1(size_t size) {
 		// allocate new superblock
 		int size_superblock = sizeof(s_header) + blockDim.x * (sizeof(s_header*) + size);
 		superblock = malloc(size_superblock);
-		if (!superblock) {
+		if (superblock == NULL) {
 			printf("V1: failed to allocate %llu bytes on device\n", (long long unsigned)(size_superblock));
 			return NULL;
 		}
@@ -42,6 +42,8 @@ __device__ void* malloc_v1(size_t size) {
 		header->counter = blockDim.x;
 	}
 	__syncthreads();
+
+	if (superblock == NULL) return NULL;
 
 	// ptr to individual memory offset
     s_header* ptr = (s_header*)((char*)superblock + sizeof(s_header) + threadIdx.x * (size + sizeof(s_header*)));
