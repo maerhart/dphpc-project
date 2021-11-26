@@ -45,6 +45,29 @@ __global__ void strided_write_v1(int num_floats, clock_t* runtime) {
     free_v1(ptr);
 }
 
+__global__ void strided_write_v2(int num_floats, clock_t* runtime) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    float* ptr = (float*)malloc_v2(num_floats * sizeof(float));
+    // check if pointers overlap with runtime
+    //printf("Runtime ptr: %p, Malloc ptr: %p\n", runtime, ptr);
+
+    //printf("%p\n", (void*)ptr);
+    __syncthreads();
+    clock_t start_time = clock();
+
+    for (int i = 0; i < num_floats; i++) {
+        ptr[i] = id + i;
+    }
+
+    clock_t end_time = clock();
+    __syncthreads();
+    //printf("%ld\n", end_time - start_time);
+    //runtime[id] = (double)(end_time - start_time) / (double)CLOCKS_PER_SEC;
+    runtime[id] = end_time - start_time;
+    //printf("%f\n", runtime[id]);
+    free_v2(ptr);
+}
+
 void print_arr(double* arr, int len) {
 	for (int i = 0; i < len; i++) {
 		std::cout << arr[i] << " ";
@@ -132,6 +155,24 @@ int main(int argc, char **argv) {
     }
     mean_v1 /= num_runs;
     std::cout << mean_v1 << std::endl;
+
+
+	// run v2
+    run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
+            [num_floats](clock_t* runtimes, int b, int t) -> void {
+                strided_write_v2<<<b, t>>>(num_floats, runtimes);
+            }
+             );
+    cudaDeviceSynchronize();
+    //print_arr(mean_runtimes, num_runs);
+
+    double mean_v2 = 0;
+    for (int i = 0; i < num_runs; ++i) {
+        mean_v2 += mean_runtimes[i];
+    }
+    mean_v2 /= num_runs;
+    std::cout << mean_v2 << std::endl;
+
 	
 	return 0;
 }

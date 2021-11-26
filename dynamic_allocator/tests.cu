@@ -5,9 +5,10 @@
 __global__ void test(int *resulting_ids) {
 
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    int* val = (int*)malloc_v1(sizeof(int));
+    int* val = (int*)malloc_v2(sizeof(int));
     *val = id;
     resulting_ids[id] = *val;
+	free_v2(val);
 }
 
 int main(int argc, char* argv[]) {
