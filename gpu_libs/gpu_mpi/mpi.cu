@@ -333,15 +333,15 @@ __device__ int MPI_Barrier(MPI_Comm comm) {
 __device__ int MPI_Alltoall(
     const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     void *recvbuf, int recvcount, MPI_Datatype recvtype,
-    MPI_Comm comm)
+    MPI_Comm comm, bool __coalesced)
 {
     int comm_size = -1;
     MPI_Comm_size(comm, &comm_size);
 
-    int* sdispls = (int*) malloc(comm_size * sizeof(int));
-    int* rdispls = (int*) malloc(comm_size * sizeof(int));
-    int* sendcounts = (int*) malloc(comm_size * sizeof(int));
-    int* recvcounts = (int*) malloc(comm_size * sizeof(int));
+    int* sdispls = (int*) __gpu_malloc(comm_size * sizeof(int), __coalesced);
+    int* rdispls = (int*) __gpu_malloc(comm_size * sizeof(int), __coalesced);
+    int* sendcounts = (int*) __gpu_malloc(comm_size * sizeof(int), __coalesced);
+    int* recvcounts = (int*) __gpu_malloc(comm_size * sizeof(int), __coalesced);
 
     for (int i = 0; i < comm_size; i++) {
         sdispls[i] = i * sendcount;
@@ -363,7 +363,7 @@ __device__ int MPI_Alltoall(
 __device__ int MPI_Alltoallv(
     const void *sendbuf, const int sendcounts[], const int sdispls[], MPI_Datatype sendtype,
     void *recvbuf, const int recvcounts[], const int rdispls[], MPI_Datatype recvtype, 
-    MPI_Comm comm) 
+    MPI_Comm comm, bool __coalesced) 
 {
     int comm_size = -1;
     int comm_rank = -1;
@@ -373,8 +373,8 @@ __device__ int MPI_Alltoallv(
     int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
     int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
 
-    MPI_Request* send_requests = (MPI_Request*) malloc(sizeof(MPI_Request) * comm_size);
-    MPI_Request* recv_requests = (MPI_Request*) malloc(sizeof(MPI_Request) * comm_size);
+    MPI_Request* send_requests = (MPI_Request*) __gpu_malloc(sizeof(MPI_Request) * comm_size, __coalesced);
+    MPI_Request* recv_requests = (MPI_Request*) __gpu_malloc(sizeof(MPI_Request) * comm_size, __coalesced);
     assert(send_requests && "Can't allocate memory");
     assert(recv_requests && "Can't allocate memory");
 
