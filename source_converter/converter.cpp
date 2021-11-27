@@ -21,6 +21,13 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 
 static cl::extrahelp MoreHelp("\nMore help...\n");
 
+cl::opt<bool> WriteToSTDOUT(
+    "write_to_stdout",
+    cl::desc(
+        "writes the converted file to stdout"),
+    cl::init(false),
+    cl::cat(ConverterCategory));
+
 const char* GPU_MPI_PROJECT = "GPU_MPI_PROJECT";
 const char* GPU_MPI_MAX_RANKS = "GPU_MPI_MAX_RANKS";
 
@@ -306,10 +313,15 @@ public:
                 newFileName = fileName.str() + ".cuh";
             }
 
-            std::error_code error_code;
-            raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
-            assert(!outFile.has_error());
-            mRewriter.getEditBuffer(fileID).write(outFile);
+            if (WriteToSTDOUT.getValue()) {
+                raw_fd_ostream outstream(fileno(stdout), true);
+                mRewriter.getEditBuffer(fileID).write(outstream);
+            } else {
+                std::error_code error_code;
+                raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
+                assert(!outFile.has_error());
+                mRewriter.getEditBuffer(fileID).write(outFile);
+            }
         }
     }
 
