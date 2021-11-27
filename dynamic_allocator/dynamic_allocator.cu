@@ -122,5 +122,128 @@ __device__ void free_v2(void* memptr) {
     if (count == 0) free(header);
 }
 
+/**
+ * Malloc for entire warp
+ *
+ * If we know that 
+ *    - each thread frees its own malloced pointers
+ *		-> can only let thread 0 free and simplify logic a lot
+ *    - when threads free pointers together, these pointers were also allcoated together, not swapped vertically (across time, not threads)
+ *              -> can simplify free logic
 
 
+
+
+
+	https://developer.nvidia.com/blog/cooperative-groups/
+
+	Also, when the tile size matches the hardware warp size, the compiler can elide the synchronization while still ensuring correct memory instruction ordering to avoid race conditions. Intentionally removing synchronizations is an unsafe technique (known as implicit warp synchronous programming) that expert CUDA programmers have often used to achieve higher performance for warp-level cooperative operations. Always explicitly synchronize your thread groups, because implicitly synchronized programs have race conditions.
+
+ */
+__device__ void* malloc_v3(size_t size, void*** shared_malloc_sizes_and_ptrs) { // assume there exists a shared preallocated arr initialized to NULL
+  // requires sizeof(size_t) <= sizof(void*)
+  // all threads execute in lock-step
+
+  // always need first two bits of size field for indicating whether has been freed
+  // first bit to indicate free
+  // second bit to differentiate -1 and -2 from giant free block
+  const size_t free_bit_mask = ((size_t) 1) << (4 * sizeof(size_t) - 1);
+  const size_t superblock_bit_mask = ((size_t) 1) << (4 * sizeof(size_t) - 2);
+  if ((free_bit_mask | superblock_bit_mask) & size) {
+    return NULL;
+  }
+
+  int lane_id = threadIdx.x % 32;
+  int warp_id = threadIdx.x / 32;
+
+  int thread_id = threadIdx.x; // assumes 1-d indexing
+
+
+  // let thread 0 allocate for every thread. Before every returned ptr, there is the size of the prev block, or superblock_bit_mask for lane 0's memory piece
+
+  // ptr to shared memory where we can put the address to return from malloc
+  void** malloc_addr_ptr = shared_malloc_size_and_ptrs[thread_id];
+  // ptr to shared memory where we save how much space this thread needs
+  size_t* thread_size_ptr = (size_t*) malloc_addr_ptr;
+
+  *thread_size_ptr = size;
+
+  if (lane_id == 0) { // potentially do this for every thread where thread before does not malloc
+  	size_t sizes_total = 0;
+  	// find sizes
+  	for (int i = 0; i < 32; i++) {
+		sizes_total += *((size_t*) shared_malloc_size_and_ptrs[thread_id + i]);
+  	}
+	sizes_total += 32 * sizeof(size_t); //header for each mini block
+
+	void* curr_ptr = malloc(sizes_total);
+
+	if (curr_ptr == NULL) {
+		for (int i = 0; i < 32; i++) {
+			*(shared_malloc_size_and_ptrs[thread_id + i]) = NULL;
+		}
+	} else {
+		// write size of prev block into headers and give all threads their addresses
+		size_t size_last = -1;
+		for (int i = 0; i < 32; i++) {
+			*((size_t*) curr_ptr) = size_last;
+			void* shared_arr_entry = shared_malloc_size_and_ptr[thread_id +i];
+			size_last = *((size_t*) shared_arr_entry);
+			*shared_arr_entry = curr_ptr;
+			curr_ptr += size_last;
+		}
+	}
+  }
+
+  void* res = *malloc_addr_ptr;
+
+  // reset to 0 to be resuble
+  *malloc_addr_ptr = NULL;
+
+  return res;
+}
+
+
+
+__device__ void free_v3(void* memptr) {
+  /*
+   * Case 1: some blocks that were allocated together are being freed but not all
+   *         -> cannot free superblock
+   *	     -> just indicate that blocks are free (by leading 1 in the size field)
+   * Case 2: all (remaining) blocks that were allocated together are being freed
+   *	     -> need to free superblock
+   */
+
+   const size_t free_bit_mask = ((size_t) 1) << (4 * sizeof(size_t) - 1);
+
+   int lane_id = threadIdx.x % 32;
+   int warp_id = threadIdx.x / 32;
+
+   int thread_id = threadIdx.x; // assumes 1-d indexing
+
+   const size_t free_bit_mask = ((size_t) 1) << (4 * sizeof(size_t) - 1);
+   const size_t superblock_bit_mask = ((size_t) 1) << (4 * sizeof(size_t) - 2);
+
+   size_t* header_ptr = ((size_t*) memptr) - 1;
+
+   // mark own block as free
+   *header_ptr = (*header_ptr) | free_bit_mask;
+
+   // each threads walks back to the start of the superblock and counts how many free blocks there are
+   // only one thread can find 32 free blocks -> it frees
+   int free_blocks = 1;
+   while (!((*header_ptr) & superblock_bit_mask)) {// while not at superblock
+        size_t size_prev_block = (*header_ptr) & ~free_bit_mask; // no need to mask superblock bits as not at superblock
+	header_ptr = ((size_t*) (((char*) header_ptr) - size_prev_block)) - 1;
+	if (!(*header_ptr) & free_bit_mask) {
+	  	break;
+	}
+	free_blocks++;
+   }
+
+   if (free_blocks == 32) {
+   	// can free als all blocks part of superblock are free
+    	// only one thread can ever reach this
+     	free(header_ptr);
+   }
+}
