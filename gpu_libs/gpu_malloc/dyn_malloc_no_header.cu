@@ -29,9 +29,9 @@ __device__ uint64_t hash(uint64_t x) {
 }
 
 __device__ void create_hashtable(KeyValue** table) {
-   *table = (KeyValue *) malloc(capacity * sizeof(KeyValue));
-   if(*table != NULL)
-       memset(*table, 0xff, sizeof(KeyValue) * capacity);
+    *table = (KeyValue *) malloc(capacity * sizeof(KeyValue));
+    if(*table != NULL)
+        memset(*table, 0xff, sizeof(KeyValue) * capacity);
 }
 
 __device__ void insert(KeyValue* hashtable, KeyValue* kv, bool *success) {
@@ -92,10 +92,28 @@ __device__ void destroy_hashtable(KeyValue **hashtable) {
 }
 
 __shared__ KeyValue *table;
-__shared__ static void **mem;
+__shared__ void **mem;
+
+__device__ void init_malloc() {
+    if(threadIdx.x == 0) {
+        table = (KeyValue *) malloc(capacity * sizeof(KeyValue));
+        if(table != NULL)
+            memset(table, 0xff, sizeof(KeyValue) * capacity);
+    }
+    auto block = cooperative_groups::this_thread_block(); 
+    block.sync();
+}
+
+__device__ void clean_malloc() {
+    if(threadIdx.x == 0) {
+        free(table);
+        table = NULL;
+    }
+    auto block = cooperative_groups::this_thread_block(); 
+    block.sync();
+}
 
 __device__ void *dyn_malloc(size_t size, bool coalesced) {
-    //init missing
     if(!coalesced) {
         // Ensure compatibility with coalesced case
         // | counter 4B | returned ptr... |
