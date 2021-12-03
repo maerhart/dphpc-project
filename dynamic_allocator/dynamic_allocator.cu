@@ -231,6 +231,7 @@ __device__ void free_v3(void* memptr) {
 
    // each threads walks back to the start of the superblock and counts how many free blocks there are
    // only one thread can find 32 free blocks -> it frees
+   // TODO this is incorrect. what if last block frees, then later other blocks are freed IDEA: have bit for is_last_block and pass along
    int free_blocks = 1;
    while (!((*header_ptr) & superblock_bit_mask)) {// while not at superblock
         size_t size_prev_block = (*header_ptr) & ~free_bit_mask; // no need to mask superblock bits as not at superblock
