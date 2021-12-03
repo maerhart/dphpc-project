@@ -248,3 +248,73 @@ __device__ void free_v3(void* memptr) {
      	free(header_ptr);
    }
 }
+
+/**
+ * Safe warp level malloc
+ *
+ * Precondition: sizeof(size_t) == sizeof(void*) (given on our GPU)
+ *
+ *  Each block has a header of size sizeof(void*) 
+ *  with bits for is_superblock, is_free, and is_last_block
+ *
+ *  TODO check if threadsafe if concurrent frees in different warps/threadblocks of blocks malloced together
+ *
+ * TODO check current assumption:
+ *     - lane_id cannot change
+ *     - threads cannot move to different warps
+ */
+__device__ void* malloc_v4(size_t size) {
+    // check preconditions. If this is not given need rewrite bit manipulations
+    assert(sizeof(size_t) == sizeof(void*));
+    size_t header_size = sizeof(void*);
+
+    const void* free_bit_mask = ((size_t) 1) << (header_size - 1);
+    const void* is_superblock_bit_mask = ((size_t) 1) << (header_size - 2);
+    const void* is_lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+
+
+    // assert special bits not used
+    if ((free_bit_mask | superblock_bit_mask | is_lastblock_bit_mask) & size) {
+        return NULL;
+    }
+
+    int my_lane_id = lane_id();
+
+    // retrieve mask of all threads in this warp that are currently executing
+    // this instruction. they will perform a coalesced malloc
+    unsigned int thread_mask = __activemask();
+    // count number of 1s
+    int n_threads = __popc(thread_mask);
+    // Find the lowest-numbered active lane
+    int elected_lane = __ffs(thread_mask) - 1;
+
+    // find out how much memory each thread needs
+    size_t required_size_above = size; // how much all participating threads with lane_id >= own need
+    // after step i, required_size_above holds the required size of next i threads
+    for (int i = 1; i < n_threads; i++) {
+        required_size_above = __shfl_down_sync(thread_mask, required_size_above, i) +size;
+        // TODO what about delta, is it for all threads or only those in thread_mask?
+    }
+
+    // the elected_lane holds the total sum of required sizes
+    size_t required_size_total = __shfl_sync(thread_mask, required_size_aboce, elected_lane);
+
+    char* alloced_ptr = NULL;
+
+    // perform coalesced malloc
+    if (my_lane_id == elected_lane) {
+        alloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
+    }
+
+    // broadcast alloced ptr to all lanes
+    alloced_ptr = __shfl_sync(thread_mask, alloced_ptr, elected_lane);
+
+    // compute where memory region is based on required mem above and idx and headers
+    // TODO
+
+    // write header
+    // TODO
+
+
+    return alloced_ptr + header_size;
+}
