@@ -135,7 +135,61 @@ __device__ void* malloc_v4(size_t size) {
 
     // make sure that no blocks are returned for which neighboring blocks are not setup
     // as this could lead to problems when the returned blocks are freed
-    __syncwarp();
+    __syncwarp(active_mask);
 
     return (void*) (header_ptr + 1);
 }
+
+
+/*
+ * If not last, do nothing. 
+ * Otherwise, traverse allcoated blocks until 
+ *	- find block that is not freed -> set to be last block
+ *	- find superblock (that is free) -> call free
+ */
+__device__ void freev4(void* memptr) {
+    // check preconditions. If this is not given need rewrite bit manipulations
+    assert(sizeof(size_t) == sizeof(void*));
+    assert(sizeof(size_t) == sizeof(unsigned int)); // required for cast in CAS call
+    size_t header_size = sizeof(void*);
+
+    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    const size_t size_mask = ~ (free_bit_mask | superblock_bit_mask | lastblock_bit_mask);
+
+    size_t* header_ptr = ((size_t*) memptr) - 1;
+
+    // set block to free
+    *header_ptr = *header_ptr | free_bit_mask;
+
+    if (!(*header_ptr & lastblock_bit_mask)) {
+        return; // if we're not the last block, we're done
+    }
+
+    // from here on, we know that we have the last block
+    // --> go through all prev blocks as described above
+
+    size_t header = *header_ptr;
+    do {
+        do {
+            // header ptr points to a freed block's header
+            if (header & superblock_bit_mask) {
+                // if we reach the superblock and it's free we're done
+                free(header_ptr);
+                return;
+            }
+            size_t size_prev_block = size_mask & header;
+            header_ptr = (size_t*) (((char*) header_ptr) - header_size - size_prev_block);
+            header = *header_ptr;
+        } while (header & free_bit_mask);
+
+        // reached a non-free block -> try to set it to last block if it has not been modified inbetween
+        // note that modified = freed here as no other modifications possible
+    } while (atomicCAS((unsigned int*) header_ptr, (unsigned int) header, (unsigned int) (header | lastblock_bit_mask)) != header);
+    // if the above CAS fails, we know that the block header has been modified -> block freed, and we
+    // will continue walking through the free blocks
+
+    // once we exit this loop we succeeded in setting an earlier unfreed block to be the last block -> we're done
+}
+
