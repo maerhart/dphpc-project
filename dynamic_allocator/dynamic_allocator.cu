@@ -249,6 +249,39 @@ __device__ void free_v3(void* memptr) {
    }
 }
 
+
+/*
+ * ----------------- for warp coalesced malloc (v4)
+ */
+
+__device__ const int WARP_SIZE = 32;
+
+__forceinline__ __device__ unsigned lane_id_asm()
+{
+    unsigned ret;
+    asm volatile ("mov.u32 %0, %laneid;" : "=r"(ret));
+    return ret;
+}
+
+__forceinline__ __device__ unsigned lane_id() // TODO lane_id not found
+{
+    unsigned id = threadIdx.x % WARP_SIZE;
+    assert(id == lane_id_asm());
+    return id;
+}
+
+__device__ uint32_t lanemask_lt() { // TODO __lanemask_lt() not found
+    return ((uint32_t)1 << lane_id()) - 1;
+}
+
+__device__ int active_lane_id(uint32_t active_mask) {
+    return __popc(active_mask & lanemask_lt());
+}
+
+__device__ bool is_active(int lid, int active_mask) {
+    return (((uint32_t) 1) << lid) & active_mask;
+}
+
 /**
  * Safe warp level malloc
  *
@@ -268,13 +301,13 @@ __device__ void* malloc_v4(size_t size) {
     assert(sizeof(size_t) == sizeof(void*));
     size_t header_size = sizeof(void*);
 
-    const void* free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const void* is_superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const void* is_lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
 
 
     // assert special bits not used
-    if ((free_bit_mask | superblock_bit_mask | is_lastblock_bit_mask) & size) {
+    if ((free_bit_mask | superblock_bit_mask | lastblock_bit_mask) & size) {
         return NULL;
     }
 
@@ -282,39 +315,80 @@ __device__ void* malloc_v4(size_t size) {
 
     // retrieve mask of all threads in this warp that are currently executing
     // this instruction. they will perform a coalesced malloc
-    unsigned int thread_mask = __activemask();
+    unsigned int active_mask = __activemask();
     // count number of 1s
-    int n_threads = __popc(thread_mask);
+    int n_threads = __popc(active_mask);
     // Find the lowest-numbered active lane
-    int elected_lane = __ffs(thread_mask) - 1;
+    int elected_lane = __ffs(active_mask) - 1;
+    // get id/idx among active lanes
+    int my_active_lane_id = active_lane_id(active_mask);
 
     // find out how much memory each thread needs
     size_t required_size_above = size; // how much all participating threads with lane_id >= own need
     // after step i, required_size_above holds the required size of next i threads
-    for (int i = 1; i < n_threads; i++) {
-        required_size_above = __shfl_down_sync(thread_mask, required_size_above, i) +size;
-        // TODO what about delta, is it for all threads or only those in thread_mask?
+    // (including non-active threads for which the shuffle instruction returns 0)
+    for (int i = 1; i < WARP_SIZE - 1; i++) {
+        size_t size_i_above = __shfl_down_sync(active_mask, size, i);
+        // check if result valid. if not both threads are active and participating
+        // in shuffle, then result is undefined
+        if ((i + my_lane_id < WARP_SIZE - 1) && is_active(my_lane_id + i, active_mask)) {
+            required_size_above += size_i_above;
+        }
     }
 
-    // the elected_lane holds the total sum of required sizes
-    size_t required_size_total = __shfl_sync(thread_mask, required_size_aboce, elected_lane);
+    __syncwarp(active_mask);
 
-    char* alloced_ptr = NULL;
+    // the elected_lane holds the total sum of required sizes
+    size_t required_size_total = __shfl_sync(active_mask, required_size_above, elected_lane);
+
+    char* malloced_ptr = NULL;
 
     // perform coalesced malloc
     if (my_lane_id == elected_lane) {
-        alloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
+        malloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
     }
 
     // broadcast alloced ptr to all lanes
-    alloced_ptr = __shfl_sync(thread_mask, alloced_ptr, elected_lane);
+    malloced_ptr = __shfl_sync(active_mask, alloced_ptr, elected_lane);
 
-    // compute where memory region is based on required mem above and idx and headers
-    // TODO
+    // header space required for the threads with lower ids 
+    int header_size_below = my_active_lane_id * header_size;
+    // compute this thread's memory region
+    size_t* header_ptr = (size_t*) (malloced_ptr + required_size_total - required_size_above + header_size_below);
 
     // write header
-    // TODO
+    if (my_lane_id == elected_lane) {
+        // write superblock header
+        *header_ptr = superblock_bit_mask;
+    } else {
+        // write non-superblock header
 
+        // get size of participating block before
+        size_t size_before = 0;
+        bool found_size_before = false;
+        for (int i = 1; i < WARP_SIZE - 1; i++) {
+            size_t size_i_below = __shfl_up_sync(active_mask, size, i);
+            // check if result valid. if not both threads are active and participating
+            // in shuffle, then result is undefined
+            if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
+                size_before = size_i_below;
+                found_size_before = true;
+            }
+        }
+        assert(found_size_before);
+        *header_ptr = size_before;
+    }
 
-    return alloced_ptr + header_size;
+    // indicate last block
+    if (my_active_lane_id == n_threads - 1) {
+        *header_ptr = *header_ptr | lastblock_bit_mask;
+    }
+
+    // make sure that no blocks are returned for which neighboring blocks are not setup
+    // as this could lead to problems when the returned blocks are freed
+    __syncwarp();
+
+    return (void*) (header_ptr + 1);
 }
+
+
