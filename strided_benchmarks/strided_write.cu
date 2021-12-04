@@ -22,6 +22,7 @@ __global__ void strided_write(int empty_padding, float* arr, int num_floats, clo
 		}
 	}
 
+	__syncthreads();
 	clock_t start_time = clock();
 
 	for (int i = 0; i < num_floats; i++) {
@@ -29,6 +30,8 @@ __global__ void strided_write(int empty_padding, float* arr, int num_floats, clo
 	}
 
 	clock_t end_time = clock();
+	__syncthreads();
+
 	runtime[id] = end_time - start_time;
 	if (end_time < start_time) {
 		printf("Clock overflow\n");
@@ -80,6 +83,7 @@ __global__ void strided_write_warp_malloc(int empty_padding, int num_floats, clo
 		}
 	}
 
+	__syncthreads();
 	clock_t start_time = clock();
 
 	for (int i = 0; i < num_floats; i++) {
@@ -87,6 +91,8 @@ __global__ void strided_write_warp_malloc(int empty_padding, int num_floats, clo
 	}
 
 	clock_t end_time = clock();
+	__syncthreads();
+
 	runtime[id] = end_time - start_time;
 	if (end_time < start_time) {
 		printf("Clock overflow\n");
@@ -132,6 +138,7 @@ __global__ void strided_write_block_malloc(int empty_padding, int num_floats, cl
 		}
 	}
 
+	__syncthreads();
 	clock_t start_time = clock();
 
 	for (int i = 0; i < num_floats; i++) {
@@ -139,6 +146,8 @@ __global__ void strided_write_block_malloc(int empty_padding, int num_floats, cl
 	}
 
 	clock_t end_time = clock();
+	__syncthreads();
+
 	runtime[id] = end_time - start_time;
 	if (end_time < start_time) {
 		printf("Clock overflow\n");
@@ -173,6 +182,7 @@ __global__ void strided_write_all_malloc(int empty_padding, int num_floats, cloc
 		}
 	}
 
+	__syncthreads(); 
 	clock_t start_time = clock();
 
 	for (int i = 0; i < num_floats; i++) {
@@ -180,6 +190,8 @@ __global__ void strided_write_all_malloc(int empty_padding, int num_floats, cloc
 	}
 
 	clock_t end_time = clock();
+	__syncthreads();
+
 	runtime[id] = end_time - start_time;
 	if (end_time < start_time) {
 		printf("Clock overflow\n");
@@ -232,8 +244,8 @@ int main(int argc, char **argv) {
 				run_strided_write(runtimes, b, t, empty_padding, num_floats, warmup);
 			}
 		     );
-	print_arr(mean_runtimes, num_runs);
-	//print_arr(max_runtimes, num_runs);
+	//print_arr(mean_runtimes, num_runs);
+	print_arr(max_runtimes, num_runs);
 
 	// run warp malloc write
 	run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
@@ -241,8 +253,8 @@ int main(int argc, char **argv) {
 				strided_write_warp_malloc<<<b, t>>>(empty_padding, num_floats, runtimes, warmup);
 			}
 		     );
-	print_arr(mean_runtimes, num_runs);
-	//print_arr(max_runtimes, num_runs);
+	//print_arr(mean_runtimes, num_runs);
+	print_arr(max_runtimes, num_runs);
 
 	// run block malloc write
 	run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
@@ -250,8 +262,8 @@ int main(int argc, char **argv) {
 				strided_write_block_malloc<<<b, t>>>(empty_padding, num_floats, runtimes, warmup);
 			}
 		     );
-	print_arr(mean_runtimes, num_runs);
-	//print_arr(max_runtimes, num_runs);
+	//print_arr(mean_runtimes, num_runs);
+	print_arr(max_runtimes, num_runs);
 
 	// run all malloc write
 	run_benchmark(num_runs, num_warmup, mean_runtimes, max_runtimes, blocks, threads_per_block,
@@ -259,6 +271,6 @@ int main(int argc, char **argv) {
 				strided_write_all_malloc<<<b, t>>>(empty_padding, num_floats, runtimes, warmup);
 			}
 		     );
-	print_arr(mean_runtimes, num_runs);
-	//print_arr(max_runtimes, num_runs);
+	//print_arr(mean_runtimes, num_runs);
+	print_arr(max_runtimes, num_runs);
 }
