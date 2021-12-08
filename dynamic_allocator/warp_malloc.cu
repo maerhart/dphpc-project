@@ -52,6 +52,11 @@ __device__ void* malloc_v4(size_t size) {
     const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
     const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
 
+    // adjust size for alignment purposes
+    // TODO handle better
+    if (size % 8 != 0) {
+        size += 8 - size % 8;
+    }
 
     // assert special bits not used
     if ((free_bit_mask | superblock_bit_mask | lastblock_bit_mask) & size) {
@@ -140,17 +145,16 @@ __device__ void* malloc_v4(size_t size) {
     return (void*) (header_ptr + 1);
 }
 
-
 /*
  * If not last, do nothing. 
  * Otherwise, traverse allcoated blocks until 
  *	- find block that is not freed -> set to be last block
  *	- find superblock (that is free) -> call free
  */
-__device__ void freev4(void* memptr) {
+__device__ void free_v4(void* memptr) {
     // check preconditions. If this is not given need rewrite bit manipulations
     assert(sizeof(size_t) == sizeof(void*));
-    assert(sizeof(size_t) == sizeof(unsigned int)); // required for cast in CAS call
+    assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
     size_t header_size = sizeof(void*);
 
     const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
@@ -186,7 +190,7 @@ __device__ void freev4(void* memptr) {
 
         // reached a non-free block -> try to set it to last block if it has not been modified inbetween
         // note that modified = freed here as no other modifications possible
-    } while (atomicCAS((unsigned int*) header_ptr, (unsigned int) header, (unsigned int) (header | lastblock_bit_mask)) != header);
+    } while (atomicCAS((long long unsigned int*) header_ptr, (long long unsigned int) header, (long long unsigned int) (header | lastblock_bit_mask)) != header);
     // if the above CAS fails, we know that the block header has been modified -> block freed, and we
     // will continue walking through the free blocks
 
