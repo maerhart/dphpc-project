@@ -58,9 +58,8 @@ __device__ void free_v1(void* memptr) {
 	// decrease counter
 	s_header* header = (s_header*)memptr - 1;    
 	int count = atomicSub(&(header->counter), 1);
-	
 	// last thread frees superblock
-	if (count == 0) free(header);
+	if (count == 1) free(header);
 }
 
 
