@@ -1,4 +1,5 @@
 #include <functional>
+#include <algorithm>
 
 /**
  * Runs benchmark function a number of times with warmup and measures mean executions times over all threads and runs individually for malloc, work and free
@@ -13,7 +14,7 @@
  * @param run_benchmark Function (runtime, blocks, threads_per_block) -> void that runs benchmark and stores each threads measured runtime into
  *                      runtime[blockIdx.x * blockDum.x + threadIdx.x]
  */
-void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_malloc, double* mean_runtimes_work, double* mean_runtimes_free, int blocks, int threads_per_block, std::function<void(clock_t*, clock_t*, clock_t*, int, int)> run_benchmark) {
+void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_malloc, double* mean_runtimes_work, double* mean_runtimes_free, double* max_runtimes_malloc, double* max_runtimes_work, double* max_runtimes_free, int blocks, int threads_per_block, std::function<void(clock_t*, clock_t*, clock_t*, int, int)> run_benchmark) {
 
         int total_threads = blocks * threads_per_block;
 
@@ -46,14 +47,34 @@ void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_
                         double sum_malloc = 0;
                         double sum_work = 0;
                         double sum_free = 0;
-                        for (int j = 0; j < total_threads; j++) {
+                        double max_malloc = 0;
+                        double max_work = 0;
+                        double max_free = 0;
+                    
+                        // sort runtimes
+                        std::sort(runtimes_host_malloc, runtimes_host_malloc + total_threads);
+                        std::sort(runtimes_host_work, runtimes_host_work + total_threads);
+                        std::sort(runtimes_host_free, runtimes_host_free + total_threads);
+                    
+                        // work over 95th percentile
+                        for (int j = 0; j < 0.95 * total_threads; j++) {
+                                // mean
                                 sum_malloc += runtimes_host_malloc[j];
                                 sum_work += runtimes_host_work[j];
                                 sum_free += runtimes_host_free[j];
+                            
+                                // max
+                                max_malloc = std::max(max_malloc, (double)runtimes_host_malloc[j]);
+                                max_work = std::max(max_work, (double)runtimes_host_work[j]);
+                                max_free = std::max(max_free, (double)runtimes_host_free[j]);
                         }
                         mean_runtimes_malloc[run_id] = sum_malloc / total_threads;
                         mean_runtimes_work[run_id] = sum_work / total_threads;
                         mean_runtimes_free[run_id] = sum_free / total_threads;
+                    
+                        max_runtimes_malloc[run_id] = max_malloc;
+                        max_runtimes_work[run_id] = max_work;
+                        max_runtimes_free[run_id] = max_free;
                 }
         }
 

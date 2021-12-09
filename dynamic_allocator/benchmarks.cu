@@ -126,6 +126,9 @@ int main(int argc, char **argv) {
     double mean_runtimes_malloc[num_runs];
     double mean_runtimes_work[num_runs];
     double mean_runtimes_free[num_runs];
+    double max_runtimes_malloc[num_runs];
+    double max_runtimes_work[num_runs];
+    double max_runtimes_free[num_runs];
 
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1000000000); // 1GB
     
@@ -134,7 +137,7 @@ int main(int argc, char **argv) {
 
 		case 0: // sum_reduce
 			// baseline
-            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, blocks, threads_per_block,
+            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
 					sum_reduce_baseline<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
@@ -142,9 +145,12 @@ int main(int argc, char **argv) {
 			print_arr(mean_runtimes_malloc, num_runs);
             print_arr(mean_runtimes_work, num_runs);
             print_arr(mean_runtimes_free, num_runs);
+            //print_arr(max_runtimes_malloc, num_runs);
+            //print_arr(max_runtimes_work, num_runs);
+            //print_arr(max_runtimes_free, num_runs);
             
             // v1
-            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, blocks, threads_per_block,
+            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
 					sum_reduce_v1<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
@@ -152,6 +158,9 @@ int main(int argc, char **argv) {
 			print_arr(mean_runtimes_malloc, num_runs);
             print_arr(mean_runtimes_work, num_runs);
             print_arr(mean_runtimes_free, num_runs);
+            //print_arr(max_runtimes_malloc, num_runs);
+            //print_arr(max_runtimes_work, num_runs);
+            //print_arr(max_runtimes_free, num_runs);
 			break;
 
 		case 1: // prod_reduce
