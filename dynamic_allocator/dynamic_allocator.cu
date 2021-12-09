@@ -149,12 +149,6 @@ __device__ uint64_t hash_v3(uint64_t x) {
     return x & (capacity_v3-1);
 }
 
-__device__ void create_hashtable_v3(KeyValue** table) {
-    *table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-    if(*table != NULL)
-        memset(*table, 0xff, sizeof(KeyValue) * capacity_v3);
-}
-
 __device__ void insert_v3(KeyValue* hashtable, KeyValue* kv, bool *success) {
     void *key = kv->key;
     void *value = kv->value;
@@ -207,14 +201,8 @@ __device__ void remove_v3(KeyValue *hashtable, KeyValue *kv) {
     }
 }
 
-__device__ void destroy_hashtable_v3(KeyValue **hashtable) {
-    free(*hashtable);
-    *hashtable = NULL;
-}
-
 __shared__ KeyValue *table;
 __shared__ void **mem;
-//__shared__ int current = 0;
 
 __device__ void init_malloc_v3() {
     if(threadIdx.x == 0) {
@@ -226,41 +214,17 @@ __device__ void init_malloc_v3() {
     block.sync();
 }
 
-__device__ void clean_malloc() {
+__device__ void clean_malloc_v3() {
+    auto block = cooperative_groups::this_thread_block();
+    block.sync();
     if(threadIdx.x == 0) {
         free(table);
         table = NULL;
     }
-    auto block = cooperative_groups::this_thread_block();
     block.sync();
 }
 __device__ void* malloc_v3(size_t size) {
-    /*if(!coalesced) {
-        // Ensure compatibility with coalesced case
-        // | counter 4B | returned ptr... |
-        void *ptr = malloc(size + sizeof(uint32_t));
-        uint32_t *counter = (uint32_t*) ptr;
-        *counter = 1;
-        KeyValue kv = {
-            .key = (void *)(counter+1);
-            .value = (void *)(counter+1);
-        };
-        bool success;
-        insert(table, &kv, &success);
-        if(success) {
-            return counter+1;
-        } else {
-            return NULL;
-        }
-    }*/
-
     if (threadIdx.x == 0) {
-        //if(!current) {
-        //    current = 1;
-        //    table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-        //    if(table != NULL)
-        //        memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
-        //}
         *mem = malloc(size * blockDim.x + sizeof(int));
         // Initialize counter
         **(int**)mem = blockDim.x;
