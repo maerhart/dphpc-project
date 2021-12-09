@@ -122,6 +122,7 @@ if __name__ == '__main__':
 
     # TODO: ugly: location of static libraries is controlled by cmake and can be changed in newer cmake versions
     gpu_mpi_libs: List[str] = [ 
+        scripts_dir + "/../gpu_libs/gpu_malloc/libgpu_malloc.a",
         scripts_dir + "/../gpu_libs/gpu_mpi/libgpu_mpi.a",
         scripts_dir + "/../gpu_libs/gpu_libc/libgpu_libc.a",
         scripts_dir + "/../gpu_libs/gpu_main/libgpu_main.a",
@@ -131,6 +132,7 @@ if __name__ == '__main__':
 
     # WARNING: will not work if source dir is moved or deleted
     gpu_mpi_headers: List[str] = [ 
+        "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_malloc",
         "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_mpi",
         "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_libc",
         "@CMAKE_SOURCE_DIR@/gpu_libs/gpu_main",
