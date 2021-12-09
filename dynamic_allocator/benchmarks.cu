@@ -1,6 +1,6 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
-#include "warp_malloc.cu"
+//#include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
 
 
@@ -104,7 +104,7 @@ __global__ void sum_reduce_v1(int num_floats, clock_t* runtime_malloc, clock_t* 
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
-
+/*
 __global__ void sum_reduce_v4(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
@@ -126,7 +126,7 @@ __global__ void sum_reduce_v4(int num_floats, clock_t* runtime_malloc, clock_t* 
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
-
+*/
 
 void print_arr(double* arr, int len) {
 	for (int i = 0; i < len; i++) {
@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
             
-            // v4
+            /*// v4
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
 					sum_reduce_v4<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
@@ -197,6 +197,7 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
+            */
 			break;
 
 		case 1: // prod_reduce
