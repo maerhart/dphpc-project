@@ -124,13 +124,11 @@ __device__ void free_v2(void* memptr) {
 struct KeyValue {
     void *key;
     void *value;
-}
+};
 
-const uint32_t capacity_v3 = 1024 * 1024; // 8 MB per block
-
-const uint32_t max_chain_v3 = capacity_v3 / 2;
-
-const void *empty = (0xffffffff << 32) | 0xffffffff;
+__constant__ uint32_t capacity_v3 = 1024 * 1024; // 8 MB per block
+__constant__ uint32_t max_chain_v3 = 1024 * 1024 / 2; //half of capacity
+__constant__ void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
 
 // 32 bit Murmur3 hash
 //__device__ uint32_t hash(uint32_t k) {
@@ -163,7 +161,7 @@ __device__ void insert_v3(KeyValue* hashtable, KeyValue* kv, bool *success) {
     uint64_t slot = hash_v3((uint64_t) key);
     uint64_t slot_start = slot;
     while (true) {
-        void *prev = atomicCAS(&hashtable[slot].key, empty, key);
+        void *prev = (void *) atomicCAS((unsigned long long int *)(&hashtable[slot].key),(unsigned long long int) empty, (unsigned long long int) key);
         if (prev == empty || prev == key) {
             hashtable[slot].value = value;
             *success = true;
@@ -216,7 +214,7 @@ __device__ void destroy_hashtable_v3(KeyValue **hashtable) {
 
 __shared__ KeyValue *table;
 __shared__ void **mem;
-__shared__ int current = 0;
+//__shared__ int current = 0;
 
 __device__ void init_malloc_v3() {
     if(threadIdx.x == 0) {
@@ -257,25 +255,25 @@ __device__ void* malloc_v3(size_t size) {
     }*/
 
     if (threadIdx.x == 0) {
-        if(!current) {
-            current = 1;
-            table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-            if(table != NULL)
-                memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
-        }
-        *mem = malloc(size * blockDim.x + sizeof(uint32_t));
+        //if(!current) {
+        //    current = 1;
+        //    table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
+        //    if(table != NULL)
+        //        memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
+        //}
+        *mem = malloc(size * blockDim.x + sizeof(int));
         // Initialize counter
-        **(uint32_t**)mem = blockDim.x;
+        **(int**)mem = blockDim.x;
     }
 
     auto block = cooperative_groups::this_thread_block();
 
     block.sync();
 
-    void *ptr = (char*)*mem + sizeof(uint32_t) + threadIdx.x * size;
+    void *ptr = (char*)*mem + sizeof(int) + threadIdx.x * size;
     KeyValue kv = {
-        .key = (void *) ptr;
-        .value = (void *) *mem;
+        .key = (void *) ptr,
+        .value = (void *) *mem
     };
 
     bool success;
@@ -292,13 +290,13 @@ __device__ void* malloc_v3(size_t size) {
 
 __device__ void free_v3(void *memptr) {
     KeyValue kv = {
-        .key = memptr;
-        .value = empty;
-    }
+        .key = memptr,
+        .value = empty
+    };
 
     lookup_v3(table, &kv);
-    uint32_t *counter_ptr = (uint32_t *) kv.value;
-    uint32_t counter = atomicAdd(counter_ptr, -1);
+    int *counter_ptr = (int *) kv.value;
+    int counter = atomicSub(counter_ptr, 1);
     remove_v3(table, &kv);
 
     if (counter == 1) {
