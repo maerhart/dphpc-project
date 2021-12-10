@@ -38,24 +38,25 @@ __global__ void test_different_types(int *resulting_ids) {
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 2) {
-        long int* val = (long int*) MALLOC(sizeof(long int));
+        long int* val = (long int*) MALLOC(sizeof(long int)); // size 64 bits
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 3) {
-        long long int* val = (long long int*) MALLOC(sizeof(long long int));
+	// check for 128 bits
+        int* val = (int*) MALLOC(128);
+	assert(((long) val) % 128  == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 1234) {
-	    /* TODO
-	// check that works with max_align_t
-	assert(sizeof(max_align_t) == sizeof(long double));
-        max_align_t* val = (max_align_t*) MALLOC(sizeof(max_align_t));
+    } else if (choice == 4) {
+        // check that alignment correct for max_align_t
+        int max_size = sizeof(max_align_t);
+        int* val = (int*) MALLOC(max_size);
+	assert(((long) val) % max_size == 0);
         *val = id;
-        resulting_ids[id] = (int) *val;
+        resulting_ids[id] = *val;
         FREE(val);
-	*/
     } else {
         int* val = (int*) MALLOC(sizeof(int));
         *val = id;
