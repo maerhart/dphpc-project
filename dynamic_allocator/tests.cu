@@ -16,11 +16,10 @@ __global__ void test(int *resulting_ids) {
 
 __global__ void test_different_size(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    size_t size = id % 32 + sizeof(int);
+    size_t size = sizeof(int) * (1 + (id % 32));
     int* val = (int*) MALLOC(size);
-    val += size - sizeof(int); // go to end of memory segment
-    *val = id;
-    resulting_ids[id] = *val;
+    val[id % 32] = id;  // write to very end of sement
+    resulting_ids[id] = val[id % 32];
     FREE(val);
 }
 
@@ -108,8 +107,7 @@ void run_test(const std::string& name, int blocks, int threads_per_block, void(*
 
 int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
-    //int blocks = 100;
-    int blocks = 1;
+    int blocks = 100;
     int threads_per_block = 32;
     run_test("basic", blocks, threads_per_block, test);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
