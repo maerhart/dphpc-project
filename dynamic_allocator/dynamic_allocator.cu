@@ -126,8 +126,8 @@ struct KeyValue {
     void *value;
 };
 
-__constant__ uint32_t capacity_v3 = 1024 * 1024; // 8 MB per block
-__constant__ uint32_t max_chain_v3 = 1024 * 1024 / 2; //half of capacity
+__constant__ uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
+__constant__ uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
 __constant__ void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
 
 // 32 bit Murmur3 hash
@@ -205,10 +205,14 @@ __shared__ KeyValue *table;
 __shared__ void **mem;
 
 __device__ void init_malloc_v3() {
-    if(threadIdx.x == 0) {
+    if(!threadIdx.x) {
         table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-        if(table != NULL)
+	mem = (void **) malloc(sizeof(void *));
+        if(table != NULL && mem != NULL) {
             memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
+	} else {
+	    printf("block %i table not inited %p \n", blockIdx.x, table);
+	}
     }
     auto block = cooperative_groups::this_thread_block();
     block.sync();
@@ -217,15 +221,20 @@ __device__ void init_malloc_v3() {
 __device__ void clean_malloc_v3() {
     auto block = cooperative_groups::this_thread_block();
     block.sync();
-    if(threadIdx.x == 0) {
+    if(!threadIdx.x) {
         free(table);
         table = NULL;
     }
     block.sync();
 }
 __device__ void* malloc_v3(size_t size) {
-    if (threadIdx.x == 0) {
+    if (!threadIdx.x) {
+	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
         *mem = malloc(size * blockDim.x + sizeof(int));
+	if (*mem == NULL) {
+	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
+	    return NULL;
+	}
         // Initialize counter
         **(int**)mem = blockDim.x;
     }
@@ -246,6 +255,7 @@ __device__ void* malloc_v3(size_t size) {
     block.sync();
 
     if(success) {
+	//printf("block %i thread %i has address %p\n", blockIdx.x, threadIdx.x, ptr);
         return ptr;
     } else {
         return NULL;

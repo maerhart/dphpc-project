@@ -110,7 +110,6 @@ __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* 
     clock_t start_malloc = clock64();
     init_malloc_v3();
     float* ptr = (float*)malloc_v3(num_floats * sizeof(float));
-    //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
     
@@ -176,6 +175,19 @@ int main(int argc, char **argv) {
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
 					sum_reduce_v1<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
+				}
+				 );
+			print_arr(mean_runtimes_malloc, num_runs);
+            print_arr(mean_runtimes_work, num_runs);
+            print_arr(mean_runtimes_free, num_runs);
+            //print_arr(max_runtimes_malloc, num_runs);
+            //print_arr(max_runtimes_work, num_runs);
+            //print_arr(max_runtimes_free, num_runs);
+
+            // v3
+            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
+				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
+					sum_reduce_v3<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
 				 );
 			print_arr(mean_runtimes_malloc, num_runs);
