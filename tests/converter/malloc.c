@@ -39,6 +39,7 @@ void h(void *ptr) {
 
 // CHECK-LABEL: int __gpu_main(int argc, char** argv)
 int main(int argc, char **argv) {
+    // CHECK-NEXT: init_malloc();
     // CHECK-NEXT: void *ptr = malloc(sizeof(int), true);
     // CHECK-NEXT: f(true);
     // CHECK-NEXT: int recv;
@@ -47,6 +48,7 @@ int main(int argc, char **argv) {
     // CHECK-NEXT: if (argc == 2) {
     // CHECK-NEXT:     g();
     // CHECK-NEXT: }
+    // CHECK-NEXT: clean_malloc();
     // CHECK-NEXT: return 0;
     void *ptr = malloc(sizeof(int));
     f();

@@ -206,6 +206,15 @@ public :
                 newArg = "bool __coalesced = false";
             mRewriter.InsertTextAfter(paramEnd, newArg);
         }
+        if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("mainFunc")) {
+            CompoundStmt *body = (CompoundStmt*)func->getBody();
+            SourceLocation start = body->getLBracLoc().getLocWithOffset(1);
+            auto returnStmt = *std::prev(body->body_end());
+            SourceLocation end = returnStmt->getSourceRange().getBegin();
+
+            mRewriter.InsertTextAfter(start, "\n    init_malloc();");
+            mRewriter.InsertTextBefore(end, "clean_malloc();\n    ");
+        }
     }
 private:
     Rewriter& mRewriter;
@@ -234,6 +243,8 @@ public:
         // CUDA will not accept it, so we need to rename such occurences.
         mMatcher.addMatcher(declRefExpr(to(namedDecl(hasName("class")))).bind("refClassTokenDecl"), &mFuncConverter);
         mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit())).bind("mainFunc"), &mFuncConverter);
 
         mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
             forEachDescendant(callExpr(
