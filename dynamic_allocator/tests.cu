@@ -14,11 +14,20 @@ __global__ void test(int *resulting_ids) {
     FREE(val);
 }
 
+__global__ void test_floats(int *resulting_ids) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    size_t size = sizeof(float) * 10;
+    float* val = (float*) MALLOC(size);
+    val[0] = id;  // write to start of segment
+    resulting_ids[id] = val[id % 32];
+    FREE(val);
+}
+
 __global__ void test_different_size(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(int) * (1 + (id % 32));
     int* val = (int*) MALLOC(size);
-    val[id % 32] = id;  // write to very end of sement
+    val[id % 32] = id;  // write to very end of segment
     resulting_ids[id] = val[id % 32];
     FREE(val);
 }
@@ -107,9 +116,10 @@ void run_test(const std::string& name, int blocks, int threads_per_block, void(*
 
 int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
-    int blocks = 100;
+    int blocks = 64;
     int threads_per_block = 32;
     run_test("basic", blocks, threads_per_block, test);
+    run_test("10 floats", blocks, threads_per_block, test_floats);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("different types", blocks, threads_per_block, test_different_types);
 
