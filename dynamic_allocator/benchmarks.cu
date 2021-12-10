@@ -155,6 +155,26 @@ __global__ void sum_reduce_v4(int num_floats, clock_t* runtime_malloc, clock_t* 
     runtime_free[id] = end_free - start_free;
 }
 
+// measure overall time
+__global__ void sum_reduce_baseline_overall(int num_floats) {
+    float* ptr = (float*)malloc_baseline(num_floats * sizeof(float));
+    
+	init_inc(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
+    
+    free_baseline(ptr);
+}
+
+// v1 Florim
+__global__ void sum_reduce_v1_flo_overall(int num_floats) {
+    float* ptr = (float*)malloc_v1(num_floats * sizeof(float));
+    
+	init_inc(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
+    
+    free_v1(ptr);
+}
+
 
 void print_arr(double* arr, int len) {
 	for (int i = 0; i < len; i++) {
@@ -182,7 +202,7 @@ int main(int argc, char **argv) {
     double max_runtimes_free[num_runs];
 
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1000000000); // 1GB
-    
+    //float milliseconds = 0;
     // choose function to run depending on workload argument
 	switch (workload) {
 
@@ -238,6 +258,22 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
+            
+            /*
+            // overall execution time baseline
+            cudaEvent_t start, stop;
+            cudaEventCreate(&start);
+            cudaEventCreate(&stop);
+            
+            cudaEventRecord(start);
+            sum_reduce_baseline_overall<<<blocks, threads_per_block>>>(num_floats);
+            cudaEventRecord(stop);
+            
+            cudaEventSynchronize(stop);
+            milliseconds = 0;
+            cudaEventElapsedTime(&milliseconds, start, stop);
+            std::cout << milliseconds << std::endl;
+            */
             
 			break;
 
