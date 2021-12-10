@@ -172,24 +172,39 @@ public :
             mRewriter.InsertText(classTokenDecl->getLocation(), "__decl_");
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCallInMain")) {
-            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", true");
+            StringRef newArg = ", true";
+            if (mallocCall->getNumArgs() == 0)
+                newArg = "true";
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), newArg);
             // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
             // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCall")) {
-            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
+            StringRef newArg = ", __coalesced";
+            if (mallocCall->getNumArgs() == 0)
+                newArg = "__coalesced";
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), newArg);
             // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
             // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("callToAddArg")) {
-            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
+            StringRef newArg = ", __coalesced";
+            if (mallocCall->getNumArgs() == 0)
+                newArg = "__coalesced";
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), newArg);
         }
         if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("callToAddTrue")) {
-            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", true");
+            StringRef newArg = ", true";
+            if (mallocCall->getNumArgs() == 0)
+                newArg = "true";
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), newArg);
         }
         if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("funcToAddArg")) {
             SourceLocation paramEnd = func->getFunctionTypeLoc().getRParenLoc();
-            mRewriter.InsertTextAfter(paramEnd, ", bool __coalesced = false");
+            StringRef newArg = ", bool __coalesced = false";
+            if (func->param_empty())
+                newArg = "bool __coalesced = false";
+            mRewriter.InsertTextAfter(paramEnd, newArg);
         }
     }
 private:
@@ -223,31 +238,31 @@ public:
         mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
             forEachDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
-                callee(functionDecl(hasName("malloc")))).bind("mallocCallInMain"))), &mFuncConverter);
+                callee(functionDecl(anyOf(hasName("malloc"), hasName("MPI_Alltoall"))))).bind("mallocCallInMain"))), &mFuncConverter);
 
         mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
             forEachDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
-                callee(functionDecl(hasName("malloc")))).bind("mallocCall"))), &mFuncConverter);
+                callee(functionDecl(anyOf(hasName("malloc"), hasName("MPI_Alltoall"))))).bind("mallocCall"))), &mFuncConverter);
 
         mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
             hasDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
-                callee(functionDecl(hasName("malloc")))))).bind("funcToAddArg"), &mFuncConverter);
+                callee(functionDecl(anyOf(hasName("malloc"), hasName("MPI_Alltoall"))))))).bind("funcToAddArg"), &mFuncConverter);
 
         mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
             forEachDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
                 callee(functionDecl(hasDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
-                callee(functionDecl(hasName("malloc")))))))).bind("callToAddArg"))), &mFuncConverter);
+                callee(functionDecl(anyOf(hasName("malloc"), hasName("MPI_Alltoall"))))))))).bind("callToAddArg"))), &mFuncConverter);
 
         mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
             forEachDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
                 callee(functionDecl(hasDescendant(callExpr(
                 unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
-                callee(functionDecl(hasName("malloc")))))))).bind("callToAddTrue"))), &mFuncConverter);
+                callee(functionDecl(anyOf(hasName("malloc"), hasName("MPI_Alltoall"))))))))).bind("callToAddTrue"))), &mFuncConverter);
     }
 
     void HandleTranslationUnit(ASTContext &Context) override {
