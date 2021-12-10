@@ -19,8 +19,15 @@
 #define abort __gpu_abort
 #define strtod __gpu_strtod
 #define posix_memalign __gpu_posix_memalign
+
+#ifdef GPUMPI_MALLOC_COALESCE
+#define malloc __gpu_malloc_coalesce
+#define calloc __gpu_calloc_coalesce
+#define free __gpu_free_coalesce
+#else
 #define malloc __gpu_malloc
 #define calloc __gpu_calloc
 #define free __gpu_free
+#endif
 
 #endif // STDLIB_H_CUH

@@ -71,8 +71,15 @@ __device__ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendt
 __device__ int MPI_Barrier(MPI_Comm comm);
 __device__ int MPI_Alltoall(const void *sendbuf, int sendcount,
             MPI_Datatype sendtype, void *recvbuf, int recvcount,
-            MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);
+            MPI_Datatype recvtype, MPI_Comm comm);
 __device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
+            const int sdispls[], MPI_Datatype sendtype,
+            void *recvbuf, const int recvcounts[],
+            const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm);
+__device__ int MPI_Alltoall_coalesce(const void *sendbuf, int sendcount,
+            MPI_Datatype sendtype, void *recvbuf, int recvcount,
+            MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);
+__device__ int MPI_Alltoallv_coalesce(const void *sendbuf, const int sendcounts[],
             const int sdispls[], MPI_Datatype sendtype,
             void *recvbuf, const int recvcounts[],
             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);

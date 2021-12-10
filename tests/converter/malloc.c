@@ -1,4 +1,4 @@
-// RUN: convert.sh %s | sed '/^[[:blank:]]*[//]/d' | FileCheck %s
+// RUN: convert.sh %s --coalesce_malloc | sed '/^[[:blank:]]*[//]/d' | FileCheck %s
 #include "mpi.h"
 #include <stdlib.h>
 
