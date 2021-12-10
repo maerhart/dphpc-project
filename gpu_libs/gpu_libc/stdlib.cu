@@ -2,6 +2,7 @@
 
 #include "assert.cuh"
 #include "cuda_mpi.cuh"
+#include "dyn_malloc.cuh"
 
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
@@ -62,8 +63,8 @@ __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size
     return 0;
 }
 
-__device__ void* __gpu_malloc(size_t size) {   
-    void* ptr = malloc(size);
+__device__ void* __gpu_malloc(size_t size, bool coalesced) {   
+    void* ptr = dyn_malloc(size, coalesced);
     #ifndef NDEBUG
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
@@ -72,11 +73,14 @@ __device__ void* __gpu_malloc(size_t size) {
     return ptr;
 }
 
-__device__ void* __gpu_calloc(size_t nmemb, size_t size) {
-    void* ptr = __gpu_malloc(nmemb * size);
+__device__ void* __gpu_calloc(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc(nmemb * size, coalesced);
     if (ptr) {
         memset(ptr, 0, nmemb * size);
     }
     return ptr;
 }
 
+__device__ void __gpu_free(void *memptr) {
+    dyn_free(memptr);
+}

@@ -13,5 +13,5 @@ add_library(gpu_libc
     errno.cu
     omp.cu
     )
-target_include_directories(gpu_libc PUBLIC sys)
-target_link_libraries(gpu_libc PUBLIC common)
+target_include_directories(gpu_libc PUBLIC sys gpu_malloc)
+target_link_libraries(gpu_libc PUBLIC common gpu_malloc)
