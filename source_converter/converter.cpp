@@ -21,6 +21,13 @@ static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 
 static cl::extrahelp MoreHelp("\nMore help...\n");
 
+cl::opt<bool> WriteToSTDOUT(
+    "write_to_stdout",
+    cl::desc(
+        "writes the converted file to stdout"),
+    cl::init(false),
+    cl::cat(ConverterCategory));
+
 const char* GPU_MPI_PROJECT = "GPU_MPI_PROJECT";
 const char* GPU_MPI_MAX_RANKS = "GPU_MPI_MAX_RANKS";
 
@@ -164,6 +171,26 @@ public :
         if (const NamedDecl* classTokenDecl = Result.Nodes.getNodeAs<NamedDecl>("classTokenDecl")) {
             mRewriter.InsertText(classTokenDecl->getLocation(), "__decl_");
         }
+        if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCallInMain")) {
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", true");
+            // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
+            // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
+        }
+        if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("mallocCall")) {
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
+            // SourceRange oldMallocRange = mallocCall->getCallee()->getSourceRange();
+            // mRewriter.ReplaceText(oldMallocRange, "dyn_malloc");
+        }
+        if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("callToAddArg")) {
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", __coalesced");
+        }
+        if (const CallExpr *mallocCall = Result.Nodes.getNodeAs<CallExpr>("callToAddTrue")) {
+            mRewriter.InsertTextBefore(mallocCall->getRParenLoc(), ", true");
+        }
+        if (const FunctionDecl *func = Result.Nodes.getNodeAs<FunctionDecl>("funcToAddArg")) {
+            SourceLocation paramEnd = func->getFunctionTypeLoc().getRParenLoc();
+            mRewriter.InsertTextAfter(paramEnd, ", bool __coalesced = false");
+        }
     }
 private:
     Rewriter& mRewriter;
@@ -192,6 +219,35 @@ public:
         // CUDA will not accept it, so we need to rename such occurences.
         mMatcher.addMatcher(declRefExpr(to(namedDecl(hasName("class")))).bind("refClassTokenDecl"), &mFuncConverter);
         mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
+            forEachDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasName("malloc")))).bind("mallocCallInMain"))), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
+            forEachDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasName("malloc")))).bind("mallocCall"))), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
+            hasDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasName("malloc")))))).bind("funcToAddArg"), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
+            forEachDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasName("malloc")))))))).bind("callToAddArg"))), &mFuncConverter);
+
+        mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
+            forEachDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasDescendant(callExpr(
+                unless(anyOf(hasAncestor(ifStmt()), hasAncestor(forStmt()), hasAncestor(whileStmt()), hasAncestor(doStmt()), hasAncestor(conditionalOperator()))),
+                callee(functionDecl(hasName("malloc")))))))).bind("callToAddTrue"))), &mFuncConverter);
     }
 
     void HandleTranslationUnit(ASTContext &Context) override {
@@ -257,10 +313,15 @@ public:
                 newFileName = fileName.str() + ".cuh";
             }
 
-            std::error_code error_code;
-            raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
-            assert(!outFile.has_error());
-            mRewriter.getEditBuffer(fileID).write(outFile);
+            if (WriteToSTDOUT.getValue()) {
+                raw_fd_ostream outstream(fileno(stdout), true);
+                mRewriter.getEditBuffer(fileID).write(outstream);
+            } else {
+                std::error_code error_code;
+                raw_fd_ostream outFile(newFileName, error_code, llvm::sys::fs::OF_None);
+                assert(!outFile.has_error());
+                mRewriter.getEditBuffer(fileID).write(outFile);
+            }
         }
     }
 
