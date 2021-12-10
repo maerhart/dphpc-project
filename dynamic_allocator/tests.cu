@@ -18,7 +18,7 @@ __global__ void test_different_size(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(int) * (1 + (id % 32));
     int* val = (int*) MALLOC(size);
-    val[id % 32] = id;  // write to very end of sement
+    val[id % 32] = id;  // write to very end of segment
     resulting_ids[id] = val[id % 32];
     FREE(val);
 }
@@ -80,19 +80,26 @@ __global__ void test_pass_ptrs(int *resulting_ids) {
     // malloc int and share pointer
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     int* val = (int*) MALLOC(sizeof(int));
+    assert(val != NULL);
     ptrs[threadIdx.x] = val;
+    __syncthreads();
 
+    // NOTE lane and warp get modified for the shuffling of values
+    int lane = threadIdx.x % 32;
+    int warp = threadIdx.x / 32;
+    bool even_thread = lane % 2 == 0 && warp % 2 == 0;
 
-    // write id if even thread 
-    if (id % 2 == 0) {
+    // write id if everything even
+    if (even_thread) {
         *val = id;
+    }
+    __syncthreads(); // make sure that pointer written before read
+    if (even_thread) {
         // shuffle pointers around warps
 
         // map lane i warp j  -> warp i lane j
         // if i >= #warps or j >= #lanes => leave
 
-        int lane = threadIdx.x % 32;
-        int warp = threadIdx.x / 32;
         if (lane < blockDim.x / 32 && warp < 32) {
             int temp = lane;
             lane = warp;
@@ -101,17 +108,15 @@ __global__ void test_pass_ptrs(int *resulting_ids) {
         
         val = ptrs[warp * 32 + lane];
         resulting_ids[id] = *val;
-    }
-    __syncthreads();
-    if (id % 2 == 0) {
-        FREE(val); // free only here in order not to run into conflict with *val = id;
+        FREE(val);
     }
 
     // do the same for odd threads
-    if (id % 2 == 1) {
+    if (!even_thread) {
         *val = id;
-        int lane = threadIdx.x % 32;
-        int warp = threadIdx.x / 32;
+    }
+    __syncthreads();
+    if (!even_thread) {
         if (lane < blockDim.x / 32 && warp < 32) {
             int temp = lane;
             lane = warp;
@@ -119,10 +124,12 @@ __global__ void test_pass_ptrs(int *resulting_ids) {
         }
         val = ptrs[warp * 32 + lane];
         resulting_ids[id] = *val;
-    }
-    __syncthreads();
-    if (id % 2 == 1) {
         FREE(val);
+    }
+
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        FREE(ptrs);
     }
 }
 
@@ -170,12 +177,11 @@ void run_test(const std::string& name, int blocks, int threads_per_block, void(*
 int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
     int blocks = 100;
-    int threads_per_block = 32;
+    int threads_per_block = 128;
     run_test("basic          ", blocks, threads_per_block, test);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("different types", blocks, threads_per_block, test_different_types);
     run_test("pass ptrs      ", blocks, threads_per_block, test_pass_ptrs);
-
 
     return 0;
 }
