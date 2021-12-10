@@ -26,7 +26,7 @@ __device__ int active_lane_id(uint32_t active_mask) {
 }
 
 __device__ bool is_active(int lid, uint32_t active_mask) {
-    return (((uint32_t) 1) << lid) & active_mask;
+    return lid >= 0 && lid < WARP_SIZE && ((((uint32_t) 1) << lid) & active_mask);
 }
 
 /**
@@ -45,12 +45,11 @@ __device__ bool is_active(int lid, uint32_t active_mask) {
  */
 __device__ void* malloc_v4(size_t size) {
     // check preconditions. If this is not given need rewrite bit manipulations
-    assert(sizeof(size_t) == sizeof(void*));
-    size_t header_size = sizeof(void*) * 8;
+    size_t header_size = sizeof(size_t);
 
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    const size_t free_bit_mask = ((size_t) 1) << (8 * header_size - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (8 * header_size - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (8 * header_size - 3);
 
     // adjust size for alignment purposes
     // TODO handle better
@@ -79,11 +78,11 @@ __device__ void* malloc_v4(size_t size) {
     size_t required_size_above = size; // how much all participating threads with lane_id >= own need
     // after step i, required_size_above holds the required size of next i threads
     // (including non-active threads for which the shuffle instruction returns 0)
-    for (int i = 1; i < WARP_SIZE - 1; i++) {
+    for (int i = 1; i < WARP_SIZE; i++) {
         size_t size_i_above = __shfl_down_sync(active_mask, size, i);
         // check if result valid. if not both threads are active and participating
         // in shuffle, then result is undefined
-        if ((i + my_lane_id < WARP_SIZE - 1) && is_active(my_lane_id + i, active_mask)) {
+        if (is_active(my_lane_id + i, active_mask)) {
             required_size_above += size_i_above;
         }
     }
@@ -117,14 +116,14 @@ __device__ void* malloc_v4(size_t size) {
     } else {
         // write non-superblock header
 
-        // get size of participating block before
+        // get size of participating block before TODO bug as elected lane does note participate
         size_t size_before = 0;
         bool found_size_before = false;
-        for (int i = 1; i < WARP_SIZE - 1; i++) {
+        for (int i = 1; i < WARP_SIZE; i++) {
             size_t size_i_below = __shfl_up_sync(active_mask, size, i);
             // check if result valid. if not both threads are active and participating
             // in shuffle, then result is undefined
-            if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
+            if (!found_size_before && is_active(my_lane_id - i, active_mask)) {
                 size_before = size_i_below;
                 found_size_before = true;
             }
@@ -155,11 +154,11 @@ __device__ void free_v4(void* memptr) {
     // check preconditions. If this is not given need rewrite bit manipulations
     assert(sizeof(size_t) == sizeof(void*));
     assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
-    size_t header_size = sizeof(void*);
+    size_t header_size = sizeof(size_t);
 
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    const size_t free_bit_mask = ((size_t) 1) << (8 * header_size - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (8 * header_size - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (8 * header_size - 3);
     const size_t size_mask = ~ (free_bit_mask | superblock_bit_mask | lastblock_bit_mask);
 
     size_t* header_ptr = ((size_t*) memptr) - 1;
