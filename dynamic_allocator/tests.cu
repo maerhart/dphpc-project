@@ -42,18 +42,18 @@ __global__ void test_different_types(int *resulting_ids) {
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 3) {
-	// check for 128 bits
+    } else if (choice == 300) { // TODO doesn't pass yet
+    	// check for 128 bits
         int* val = (int*) MALLOC(128);
-	assert(((long) val) % 128  == 0);
+    	assert(((long) val) % 128  == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 4) {
+    } else if (choice == 400) { // TODO doesn't pass yet
         // check that alignment correct for max_align_t
         int max_size = sizeof(max_align_t);
         int* val = (int*) MALLOC(max_size);
-	assert(((long) val) % max_size == 0);
+    	assert(((long) val) % max_size == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
@@ -61,6 +61,67 @@ __global__ void test_different_types(int *resulting_ids) {
         int* val = (int*) MALLOC(sizeof(int));
         *val = id;
         resulting_ids[id] = *val;
+        FREE(val);
+    }
+}
+
+/**
+ * Passes pointers around and doesn't free all at same time
+ */
+__global__ void test_pass_ptrs(int *resulting_ids) {
+
+    __shared__ int** ptrs;
+    // let thread 0 in block allocate array for entire block
+    if (threadIdx.x == 0) {
+        ptrs = (int**) MALLOC(sizeof(int*) * blockDim.x);
+    } 
+    __syncthreads();
+
+    // malloc int and share pointer
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    int* val = (int*) MALLOC(sizeof(int));
+    ptrs[threadIdx.x] = val;
+
+
+    // write id if even thread 
+    if (id % 2 == 0) {
+        *val = id;
+        // shuffle pointers around warps
+
+        // map lane i warp j  -> warp i lane j
+        // if i >= #warps or j >= #lanes => leave
+
+        int lane = threadIdx.x % 32;
+        int warp = threadIdx.x / 32;
+        if (lane < blockDim.x / 32 && warp < 32) {
+            int temp = lane;
+            lane = warp;
+            warp = temp;
+        }
+        
+        val = ptrs[warp * 32 + lane];
+        resulting_ids[id] = *val;
+    }
+    __syncthreads();
+    if (id % 2 == 0) {
+        FREE(val); // free only here in order not to run into conflict with *val = id;
+    }
+
+    // do the same for odd threads
+    if (id % 2 == 1) {
+        *val = id;
+        int lane = threadIdx.x % 32;
+        int warp = threadIdx.x / 32;
+        if (lane < blockDim.x / 32 && warp < 32) {
+            int temp = lane;
+            lane = warp;
+            warp = temp;
+        }
+        val = ptrs[warp * 32 + lane];
+        resulting_ids[id] = *val;
+    }
+    __syncthreads();
+    if (id % 2 == 1) {
         FREE(val);
     }
 }
@@ -110,9 +171,10 @@ int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
     int blocks = 100;
     int threads_per_block = 32;
-    run_test("basic", blocks, threads_per_block, test);
+    run_test("basic          ", blocks, threads_per_block, test);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("different types", blocks, threads_per_block, test_different_types);
+    run_test("pass ptrs      ", blocks, threads_per_block, test_pass_ptrs);
 
 
     return 0;
