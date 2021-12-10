@@ -1,6 +1,7 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
 #include "warp_malloc.cu"
+#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 #define MALLOC malloc_v4
 #define FREE free_v4
@@ -19,7 +20,7 @@ __global__ void test_floats(int *resulting_ids) {
     size_t size = sizeof(float) * 10;
     float* val = (float*) MALLOC(size);
     val[0] = id;  // write to start of segment
-    resulting_ids[id] = val[id % 32];
+    resulting_ids[id] = val[0];
     FREE(val);
 }
 
