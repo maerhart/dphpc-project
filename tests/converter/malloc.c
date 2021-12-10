@@ -1,5 +1,6 @@
 // RUN: convert.sh %s | sed '/^[[:blank:]]*[//]/d' | FileCheck %s
 #include "mpi.h"
+#include <stdlib.h>
 
 // CHECK-LABEL: __device__ void f(bool __coalesced = false)
 void f() {
