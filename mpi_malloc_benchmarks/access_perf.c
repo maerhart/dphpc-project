@@ -1,5 +1,6 @@
 #include "mpi.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 int main(int argc, char *argv[])
@@ -27,11 +28,14 @@ int main(int argc, char *argv[])
     *ptr=myid;
     *ptr2=myid*2;
 
+    if (myid == 0) {
+        endwtime = MPI_Wtime();
+    }
+
     MPI_Reduce(ptr, &res1, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
     MPI_Reduce(ptr2, &res2, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if (myid == 0) {
-        endwtime = MPI_Wtime();
         printf("Result 1: %d, Result 2: %d\n", res1, res2);
         printf("wall clock time = %f\n", endwtime - startwtime);
         fflush(stdout);

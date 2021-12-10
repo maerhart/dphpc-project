@@ -1,13 +1,12 @@
 #include "mpi.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 
 int main(int argc, char *argv[])
 {
     int myid, numprocs, i;
-    double startwtime[MPI_MAX_PROCESSOR_NAME], endwtime[MPI_MAX_PROCESSOR_NAME];
-    double walltime[MPI_MAX_PROCESSOR_NAME];
-    double maxtime;
+    double startwtime, endwtime, maxtime, mintime, sumtime;
     int namelen;
     char processor_name[MPI_MAX_PROCESSOR_NAME];
 
@@ -19,23 +18,28 @@ int main(int argc, char *argv[])
     fprintf(stdout, "Process %d of %d is on %s\n", myid, numprocs, processor_name);
     fflush(stdout);
 
-    startwtime[myid] = MPI_Wtime();
+    startwtime = MPI_Wtime();
     int *ptr = (int*) malloc(sizeof(int));
     int *ptr2 = (int*) malloc(sizeof(int));
     *ptr=myid;
     *ptr2=myid*2;
     free(ptr);
     free(ptr2);
-    endwtime[myid] = MPI_Wtime();
-    walltime[myid] = endwtime[myid] - startwtime[myid];
+    endwtime = MPI_Wtime();
+    double walltime = endwtime - startwtime;
 
-    MPI_Reduce(walltime, &maxtime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&walltime, &maxtime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&walltime, &mintime, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&walltime, &sumtime, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if (myid == 0) {
-        printf("wall clock time = %f\n", maxtime);
+        printf("max wall clock time = %f\n", maxtime);
+        printf("min wall clock time = %f\n", mintime);
+        printf("avg wall clock time = %f\n", sumtime/numprocs);
         fflush(stdout);
     }
 
     MPI_Finalize();
     return 0;
 }
+
