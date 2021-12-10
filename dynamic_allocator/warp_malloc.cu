@@ -46,7 +46,7 @@ __device__ bool is_active(int lid, uint32_t active_mask) {
 __device__ void* malloc_v4(size_t size) {
     // check preconditions. If this is not given need rewrite bit manipulations
     assert(sizeof(size_t) == sizeof(void*));
-    size_t header_size = sizeof(void*);
+    size_t header_size = sizeof(void*) * 8;
 
     const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
     const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
