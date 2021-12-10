@@ -12,7 +12,7 @@ import sys
 CSV_PATH = sys.argv[1]
 
 header = ['repetition', 'version', 'workload', 'blocks', 'threads_per_block', 'floats', 'malloc_mean', 'malloc_max', 'free_mean', 'free_max', 'work_mean', 'work_max']
-df = pd.read_csv(CSV_PATH, names = header, delimiter = ' ')
+df = pd.read_csv(CSV_PATH+"/input.csv", names = header, delimiter = ' ')
 
 
 # single plot
@@ -78,6 +78,7 @@ for i, measurement_type in enumerate(['Malloc', 'Work', 'Free']):
               'workload': 'sum_all'}
     plot_floats_vs_cycles(df, axs[i], params)
     
+plt.savefig(CSV_PATH+"/result.png", dpi=60, bbox_inches='tight')   
 plt.show()
 
 
