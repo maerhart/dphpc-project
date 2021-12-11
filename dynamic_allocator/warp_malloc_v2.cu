@@ -1,7 +1,10 @@
 #include <assert.h>
 #include <iostream>
+#include <utility>
+
 
 __device__ const int WARP_SIZE = 32;
+__device__ const size_t MAX_HEADER_PAD = sizeof(max_align_t) - 1;
 
 __forceinline__ __device__ unsigned lane_id_asm()
 {
@@ -26,55 +29,120 @@ __device__ int active_lane_id(uint32_t active_mask) {
 }
 
 __device__ bool is_active(int lid, uint32_t active_mask) {
-    return (((uint32_t) 1) << lid) & active_mask;
+    return lid >= 0 && lid < 32 && (((uint32_t) 1) << lid) & active_mask;
 }
 
 /**
- * assuming header can start at given offset from 16-aligned starting point, compute where header will end
- *
- * @param offset Offset from 16-aligned starting point
- * @param min_header_size Minimum header size required
- *
- * @return offset shifted by space required for block with given parameters
+ * Align x to given alignment by padding if necessary
  */
-__device__ size_t header_offset(size_t offset, size_t min_header_size) {
-    // ensure alignment of header
-    if (offset % min_header_size > 0) {
-        offset += min_header_size - offset % min_header_size; 
+__device__ size_t pad_align(size_t x, size_t alignment) {
+    size_t mod = x % alignment;
+    if (mod > 0) {
+       return x + alignment - mod; 
+    } else {
+        return x;
     }
+}
+
+/**
+ * assuming header can start at given offset from max-aligned starting point, compute where header will end
+ *
+ * @param offset Offset from max-aligned starting point
+ * @param min_header_size Minimum header size required
+ * @param payload_alignment Required alignment for payload.
+ *
+ * Requires payload_alignment == min_header_size || min_header_size == 8 && payload_alignment % min_header_size == 0
+ * and sizeof(size_t) == 8 
+ *
+ * @return offset to end of header (and start of payload)
+ * 
+ */
+__device__ size_t header_end_offset(size_t offset, size_t min_header_size, size_t payload_alignment) {
+    assert(payload_alignment == min_header_size || min_header_size == 8 && payload_alignment % min_header_size == 0);
+    assert(sizeof(size_t) == 8);
+    size_t offset_initial = offset;
+
+    // ensure alignment of header
+    offset = pad_align(offset, min_header_size);
 
     // ensure that header aligned not by more than x if header size = x < 8 (necessary for free)
     if (min_header_size < 8 && offset % (2 * min_header_size) == 0) {
         offset += min_header_size; // now "misaligned" enough
     }
 
-    // offset now at position where header of block starts
-    // (unless block alignment > 8 in which case header size 8 and we shift the start of the block but header is guaranteed to fit and aligned as required)
+    // offset now at position where header of block can start
     offset += min_header_size;
+
+    // due to precondition this further padding will only happen in the case min_header_size = 8
+    // and it will not destroy padding to min_header_size
+    offset = pad_align(offset, payload_alignment);
+
+    assert(offset - offset_initial <= MAX_HEADER_PAD);
     return offset;
 }
 
 /**
- * assuming block can start at given offset from 16-aligned starting point, compute where block will end
+ * compute minimum required header size and required alignemnt for a block
  *
- * @param offset Offset from 16-aligned starting point
- * @param min_header_size Minimum header size required
- * @param alignment Required alignment of block payload
- * @param size Required size for block payload
+ * @param size Requested payload size for the block
+ * @param space_prev_block Space required for payload of previous block (including padding)
+ *          has to be < 2^(64 - 3)
  *
- * @return offset shifted by space required for block with given parameters
+ * @param res_min_header_size Will contain min_header_size
+ * @param res_alignment Will contain alignment
  */
-__device__ size_t shift_offset(size_t offset, size_t min_header_size, size_t alignment, size_t size) {
-    offset = header_offset(offset, min_header_size);
-    // add size of block, ensure that alignment of block satisfied
-    if (offset % alignment > 0) {
-        offset += alignment - offset % alignment;
-    }
+__device__ void compute_min_header_size_alignment(size_t size, size_t space_prev_block_payload, size_t& res_min_header_size, size_t& res_alignment) {
+    // header has to be as big as alignment in order to conclude header size (or max of 8 bytes)
+    // alignment has to as big as header in order to have legal position for header
+    assert(sizeof(max_align_t) == 32); // TODO not even cuda's malloc aligns to 32
 
-    // offset now at position where payload of block i lanes below will start
-    offset += size;
-    return offset;
+    // upper bound on space required by previous block where we count the padding of this blocks header too
+    size_t bound_space_prev_block = space_prev_block_payload + MAX_HEADER_PAD;
+
+    if (size < 2 && bound_space_prev_block < 32) { // 2 ^ (8-3)
+        // can 1-align header as no 2-alignment required
+        res_alignment = 1;
+        // can fit in 1 byte / 8 bits together with header
+        res_min_header_size = 1;
+    } else if (size < 4 &&  bound_space_prev_block < 8192) { // 2 ^ (16 - 3)
+        res_alignment = 2;
+        res_min_header_size = 2;
+    } else if (size < 8 &&  bound_space_prev_block < 536870912) { // 2 ^ (32 - 3)
+        res_alignment = 4;
+        res_min_header_size = 4;
+    } else if (size < 16) { // know that space_prev_block fits from initial check
+        res_alignment = 8;
+        res_min_header_size = 8;
+    } else { // if (size < 32) { // TODO align to 32? not even cuda's malloc aligns to 32 but max_align_t is 32
+        res_alignment = 16;
+        res_min_header_size = 8; // header never bigger than 8
+    } /*else {
+        res_alignment = 32;
+        res_min_header_size = 8;
+    }*/
 }
+
+/**
+ * write the header for a block.
+ */
+template<typename T>
+__device__ void write_header(void* payload_start_ptr, bool is_superblock, bool is_lastblock, void* prev_payload_start_ptr) {
+   T* header_ptr = ((T*) payload_start_ptr) - 1;
+   size_t space_prev_payload = ((char*) header_ptr) - ((char*) prev_payload_start_ptr);  // includes padding
+
+   T header = (T) space_prev_payload;
+
+   assert(header == space_prev_payload);
+
+   // write superblock bit
+   header = header | (((T) is_superblock) << (8 * sizeof(T) - 1));
+
+   // write lastblock bit
+   header = header | (((T) is_lastblock) << (8 * sizeof(T) - 3));
+
+   *header_ptr = header;
+}
+
 
 /**
  *  Warp level malloc with variable alignemnt and variable header size
@@ -98,20 +166,6 @@ __device__ void* malloc_v5(size_t size) {
         return NULL;
     }
 
-
-    /*
-    size_t header_size = sizeof(void*) * 8;
-
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
-
-    // assert special bits not used
-    if ((free_bit_mask | superblock_bit_mask | lastblock_bit_mask) & size) {
-        return NULL;
-    }
-    */
-
     int my_lane_id = lane_id();
 
     // retrieve mask of all threads in this warp that are currently executing
@@ -121,72 +175,38 @@ __device__ void* malloc_v5(size_t size) {
     int n_threads = __popc(active_mask);
     // Find the lowest-numbered active lane
     int elected_lane = __ffs(active_mask) - 1;
+    bool is_elected = my_lane_id == elected_lane;
     // Find the highest-numbered active lane
     int last_lane = 31 - __clz(active_mask);
+    bool is_last = my_lane_id == last_lane;
     // get id/idx among active lanes
     int my_active_lane_id = active_lane_id(active_mask);
 
-
-    // find out size of thread before
-    size_t size_before = 0;
-    bool found_size_before = false;
-    for (int i = 1; i < WARP_SIZE - 1; i++) {
+    // compute relevant offsets from 16-bit aligned malloced superblock start
+    size_t offset_prev_payload_end = 0; // offset to end of payload of last processed block;
+    size_t offset_prev_payload_start = 0; // offset to end of header of last processed block (or start of payload, equivalent)
+    for (int i = WARP_SIZE - 1; i > 0; i--) {  // go through all lanes/their memory  blocks from lowest lane to highest
         size_t size_i_below = __shfl_up_sync(active_mask, size, i);
         // check if result valid. if not both threads are active and participating
         // in shuffle, then result is undefined
-        if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
-            size_before = size_i_below;
-            found_size_before = true;
+        if (is_active(my_lane_id - i, active_mask)) {
+            size_t min_header_size; size_t alignment;
+            compute_min_header_size_alignment(size_i_below, offset_prev_payload_end - offset_prev_payload_start, min_header_size, alignment);
+            offset_prev_payload_start = header_end_offset(offset_prev_payload_end, min_header_size, alignment);
+            offset_prev_payload_end = offset_prev_payload_start + size;
         }
     }
-    assert(found_size_before || my_lane_id == elected_lane);
+    // arrived at own block, offset vars contain block of lane before
 
-    // 2. check what header size we require
-    // header has to be as big as alignment in order to conclude header size (or max of 8 bytes)
-    // alignment has to as big as header in order to have legal position for header
-    size_t min_header_size;
-    size_t alignment;
-    assert(sizeof(max_align_t) == 32);
-    if (size < 2 && size_before < 32) { // 2 ^ (8-3)
-        // can 1-align header as no 2-alignment required
-        alignment = 1;
-        // can fit in 1 byte / 8 bits together with header
-        min_header_size = 1;
-    } else if (size < 4 && size_before < 8192) { // 2 ^ (16 - 3)
-        alignment = 2;
-        min_header_size = 2;
-    } else if (size < 8 && size_before < 536870912) { // 2 ^ (32 - 3)
-        alignment = 4;
-        min_header_size = 4;
-    } else if (size < 16) { // know that size_before fits from initial check
-        alignment = 8;
-        min_header_size = 8;
-    } else if (size < 32) {
-        alignment = 16;
-        min_header_size = 8; // header never bigger than 8
-    } else {
-        alignment = 32;
-        min_header_size = 8;
-    }
+    // compute minimum header size and payload alignment for this block
+    size_t min_header_size; size_t alignment;
+    compute_min_header_size_alignment(size, offset_prev_payload_end - offset_prev_payload_start, min_header_size, alignment);
+    size_t offset_payload_start = header_end_offset(offset_prev_payload_end, min_header_size, alignment);
 
-    size_t offset = 0; // offset from malloced ptr to smallest address available for own lane's block 
-    for (int i = WARP_SIZE - 1; i > 0; i--) {  // go through alignments and header sizes from bottom up
-        size_t size_i_below = __shfl_up_sync(active_mask, size, i);
-        size_t alignment_i_below = __shfl_up_sync(active_mask, alignment, i);
-        size_t min_header_size_i_below = __shfl_up_sync(active_mask, min_header_size, i);
-        // check if result valid. if not both threads are active and participating
-        // in shuffle, then result is undefined
-        if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
-            // shift offset s.t. block i lanes below fits
-            offset = shift_offset(offset, min_header_size_i_below, alignment_i_below, size_i_below);
-        }
-    }
-    // offset contains offset from malloced ptr to where header of this block will start
-
-    // let last thread compute required total length by adding own requirements to offset
+    // let last thread compute required total length (= offset to end of its payload)
     size_t total_superblock_length = 0;
-    if (my_active_lane_id == n_threads - 1) { 
-        total_superblock_length = shift_offset(offset, min_header_size, alignment, size);
+    if (is_last) {
+        total_superblock_length = offset_payload_start + size;
     }
     total_superblock_length = __shfl_sync(active_mask, total_superblock_length, last_lane);
 
@@ -194,38 +214,31 @@ __device__ void* malloc_v5(size_t size) {
     // perform malloc of superblock
     char* malloced_ptr = NULL;
     // perform coalesced malloc
-    if (my_lane_id == elected_lane) {
-        malloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
+    if (is_elected) {
+        malloced_ptr = (char*) malloc(total_superblock_length);
     }
     // broadcast alloced ptr to all lanes
     assert(sizeof(size_t) == sizeof(char*)); // make sure we don't change due to cast
     // need to cast as pointers can't be shuffled
     malloced_ptr = (char*) __shfl_sync(active_mask, (size_t) malloced_ptr, elected_lane);
 
-    // write header
-    offset += header_offset(offset, min_header_size);
+    void* payload_start_ptr = malloced_ptr + offset_payload_start;
+    void* prev_payload_start_ptr = malloced_ptr + offset_prev_payload_start;
+
+    size_t payload_start_num = (size_t) payload_start_ptr;
     // work with correct header type
-    if (offset % 8 == 0) {
-        size_t* header_ptr = (size_t*) (malloced_ptr + offset);
-        if (my_lane_id == elected_lane) {
-            // just write is_superblock header
-        } else {
-            // write size
-            // TODO need actual number of bytes to previous header!
-            // need to include padding, need to watch out that still fits
-            *header_ptr = 
-        }
-    } else if (offset % 4 == 0) {
-        uint32_t* header_ptr = (uint32_t*) (malloced_ptr + offset);
-    } else if (offset % 2 == 0) {
-        uint16_t* header_ptr = (uint16_t*) (malloced_ptr + offset);
+    if (payload_start_num % 8 == 0) {
+        write_header<size_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
+    } else if (payload_start_num % 4 == 0) {
+        write_header<uint32_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
+    } else if (payload_start_num % 2 == 0) {
+        write_header<uint16_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
     } else {
-        uint8_t* header_ptr = (uint8_t*) (malloced_ptr + offset);
+        write_header<uint8_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
     }
 
-
-    __syncwarp(active_mask);
-    return (void*) (header_ptr + 1); // TODO
+    __syncwarp(active_mask); // required s.t. not uninitialized headers are looked at during free
+    return payload_start_ptr;
 }
 
 /*
@@ -235,6 +248,8 @@ __device__ void* malloc_v5(size_t size) {
  *	- find superblock (that is free) -> call free
  */
 __device__ void free_v5(void* memptr) {
+    assert(false); // unimplemented
+
     // check preconditions. If this is not given need rewrite bit manipulations
     assert(sizeof(size_t) == sizeof(void*));
     assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
