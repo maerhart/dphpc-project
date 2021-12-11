@@ -1,6 +1,8 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
+#include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
+#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 
 // *** Workloads ***
@@ -72,7 +74,7 @@ __global__ void sum_reduce_baseline(int num_floats, clock_t* runtime_malloc, clo
 	init_inc(num_floats, ptr);
     
     clock_t start_work = clock64();
-	sum_all_prod(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
@@ -82,10 +84,12 @@ __global__ void sum_reduce_baseline(int num_floats, clock_t* runtime_malloc, clo
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void sum_reduce_v1(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+// v1 Florim
+__global__ void sum_reduce_v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
+    //float* ptr = (float*)dyn_malloc(num_floats * sizeof(float));
     float* ptr = (float*)malloc_v1(num_floats * sizeof(float));
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
@@ -94,12 +98,36 @@ __global__ void sum_reduce_v1(int num_floats, clock_t* runtime_malloc, clock_t* 
 	init_inc(num_floats, ptr);
     
     clock_t start_work = clock64();
-	sum_all_prod(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
+    //dyn_free(ptr);
     free_v1(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+// v1 Martin
+__global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)dyn_malloc(num_floats * sizeof(float));
+    //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	  init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64()
+	  sum_reduce(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    dyn_free(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -113,10 +141,10 @@ __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* 
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
     
-	init_inc(num_floats, ptr);
+	  init_inc(num_floats, ptr);
     
     clock_t start_work = clock64();
-	sum_all_prod(num_floats, ptr);
+	  sum_reduce(num_floats, ptr);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
@@ -126,6 +154,50 @@ __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* 
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
+
+__global__ void sum_reduce_v4(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v4(num_floats * sizeof(float));
+    //if (ptr == NULL) printf("allocation Error");
+    //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	  init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	  sum_reduce(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v4(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+// measure overall time
+__global__ void sum_reduce_baseline_overall(int num_floats) {
+    float* ptr = (float*)malloc_baseline(num_floats * sizeof(float));
+    
+	init_inc(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
+    
+    free_baseline(ptr);
+}
+
+// v1 Florim
+__global__ void sum_reduce_v1_flo_overall(int num_floats) {
+    float* ptr = (float*)malloc_v1(num_floats * sizeof(float));
+    
+	init_inc(num_floats, ptr);
+	sum_reduce(num_floats, ptr);
+    
+    free_v1(ptr);
+}
+
 
 void print_arr(double* arr, int len) {
 	for (int i = 0; i < len; i++) {
@@ -153,7 +225,7 @@ int main(int argc, char **argv) {
     double max_runtimes_free[num_runs];
 
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1000000000); // 1GB
-    
+    //float milliseconds = 0;
     // choose function to run depending on workload argument
 	switch (workload) {
 
@@ -171,10 +243,10 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
             
-            // v1
+            // v1 florim
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
-					sum_reduce_v1<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
+					sum_reduce_v1_flo<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
 				 );
 			print_arr(mean_runtimes_malloc, num_runs);
@@ -183,7 +255,20 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
-
+            
+            // v1 martin
+            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
+				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
+					sum_reduce_v1_martin<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
+				}
+				 );
+			print_arr(mean_runtimes_malloc, num_runs);
+            print_arr(mean_runtimes_work, num_runs);
+            print_arr(mean_runtimes_free, num_runs);
+            //print_arr(max_runtimes_malloc, num_runs);
+            //print_arr(max_runtimes_work, num_runs);
+            //print_arr(max_runtimes_free, num_runs);
+            
             // v3
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
@@ -196,6 +281,37 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
+      
+            // v4
+            run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
+				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
+					sum_reduce_v4<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
+
+				}
+				 );
+			print_arr(mean_runtimes_malloc, num_runs);
+            print_arr(mean_runtimes_work, num_runs);
+            print_arr(mean_runtimes_free, num_runs);
+            //print_arr(max_runtimes_malloc, num_runs);
+            //print_arr(max_runtimes_work, num_runs);
+            //print_arr(max_runtimes_free, num_runs);
+            
+            /*
+            // overall execution time baseline
+            cudaEvent_t start, stop;
+            cudaEventCreate(&start);
+            cudaEventCreate(&stop);
+            
+            cudaEventRecord(start);
+            sum_reduce_baseline_overall<<<blocks, threads_per_block>>>(num_floats);
+            cudaEventRecord(stop);
+            
+            cudaEventSynchronize(stop);
+            milliseconds = 0;
+            cudaEventElapsedTime(&milliseconds, start, stop);
+            std::cout << milliseconds << std::endl;
+            */
+
 			break;
 
 		case 1: // prod_reduce

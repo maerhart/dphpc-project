@@ -74,8 +74,8 @@ __device__ void* __gpu_malloc(size_t size) {
     return ptr;
 }
 
-__device__ void* __gpu_calloc(size_t nmemb, size_t size) {
-    void* ptr = __gpu_malloc(nmemb * size);
+__device__ void* __gpu_calloc(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc(nmemb * size, coalesced);
     if (ptr) {
         memset(ptr, 0, nmemb * size);
     }
