@@ -120,7 +120,7 @@ __device__ void free_v2(void* memptr) {
     // last thread frees superblock
     if (count == 0) free(header);
 }
-
+/*
 struct KeyValue {
     void *key;
     void *value;
@@ -276,4 +276,4 @@ __device__ void free_v3(void *memptr) {
     if (counter == 1) {
         free(counter_ptr);
     }
-}
+}*/
