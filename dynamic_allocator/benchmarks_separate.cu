@@ -51,13 +51,8 @@ void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_
                         double max_work = 0;
                         double max_free = 0;
                     
-                        // sort runtimes
-                        std::sort(runtimes_host_malloc, runtimes_host_malloc + total_threads);
-                        std::sort(runtimes_host_work, runtimes_host_work + total_threads);
-                        std::sort(runtimes_host_free, runtimes_host_free + total_threads);
-                    
-                        // work over 95th percentile
-                        for (int j = 0; j < 0.95 * total_threads; j++) {
+                        // work over all
+                        for (int j = 0; j < total_threads; j++) {
                                 // mean
                                 sum_malloc += runtimes_host_malloc[j];
                                 sum_work += runtimes_host_work[j];
