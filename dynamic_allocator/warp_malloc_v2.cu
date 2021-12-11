@@ -30,13 +30,50 @@ __device__ bool is_active(int lid, uint32_t active_mask) {
 }
 
 /**
+ * assuming header can start at given offset from 16-aligned starting point, compute where header will end
+ *
+ * @param offset Offset from 16-aligned starting point
+ * @param min_header_size Minimum header size required
+ *
+ * @return offset shifted by space required for block with given parameters
+ */
+__device__ size_t header_offset(size_t offset, size_t min_header_size) {
+    // ensure alignment of header
+    if (offset % min_header_size > 0) {
+        offset += min_header_size - offset % min_header_size; 
+    }
+
+    // ensure that header aligned not by more than x if header size = x < 8 (necessary for free)
+    if (min_header_size < 8 && offset % (2 * min_header_size) == 0) {
+        offset += min_header_size; // now "misaligned" enough
+    }
+
+    // offset now at position where header of block starts
+    // (unless block alignment > 8 in which case header size 8 and we shift the start of the block but header is guaranteed to fit and aligned as required)
+    offset += min_header_size;
+    return offset;
+}
+
+/**
  * assuming block can start at given offset from 16-aligned starting point, compute where block will end
  *
  * @param offset Offset from 16-aligned starting point
  * @param min_header_size Minimum header size required
- * @param alignment Required Alignemnt of block payload
+ * @param alignment Required alignment of block payload
+ * @param size Required size for block payload
+ *
+ * @return offset shifted by space required for block with given parameters
  */
-__device__ size_t shift_offset(size_t offset, size_t min_header_size, size_t alignment) {
+__device__ size_t shift_offset(size_t offset, size_t min_header_size, size_t alignment, size_t size) {
+    offset = header_offset(offset, min_header_size);
+    // add size of block, ensure that alignment of block satisfied
+    if (offset % alignment > 0) {
+        offset += alignment - offset % alignment;
+    }
+
+    // offset now at position where payload of block i lanes below will start
+    offset += size;
+    return offset;
 }
 
 /**
@@ -84,8 +121,11 @@ __device__ void* malloc_v5(size_t size) {
     int n_threads = __popc(active_mask);
     // Find the lowest-numbered active lane
     int elected_lane = __ffs(active_mask) - 1;
+    // Find the highest-numbered active lane
+    int last_lane = 31 - __clz(active_mask);
     // get id/idx among active lanes
     int my_active_lane_id = active_lane_id(active_mask);
+
 
     // find out size of thread before
     size_t size_before = 0;
@@ -129,8 +169,7 @@ __device__ void* malloc_v5(size_t size) {
         min_header_size = 8;
     }
 
-    // compute offset to all memory blocks before to know own offset
-    size_t offset = 0;
+    size_t offset = 0; // offset from malloced ptr to smallest address available for own lane's block 
     for (int i = WARP_SIZE - 1; i > 0; i--) {  // go through alignments and header sizes from bottom up
         size_t size_i_below = __shfl_up_sync(active_mask, size, i);
         size_t alignment_i_below = __shfl_up_sync(active_mask, alignment, i);
@@ -138,118 +177,55 @@ __device__ void* malloc_v5(size_t size) {
         // check if result valid. if not both threads are active and participating
         // in shuffle, then result is undefined
         if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
-            // ensure alignment of header
-            if (offset % min_header_size_i_below > 0) {
-                offset += min_header_size_i_below - offset % min_header_size_i_below; 
-            }
-
-            // ensure that header aligned not by more than x if header size = x < 8 (necessary for free)
-            if (min_header_size_i_below < 8 && offset % (2 * min_header_size_i_below) == 0) {
-                offset += min_header_size_i_below; // now "misaligned" enough
-            }
-
-            // offset now at position where header of block i lanes below will start
-            // (unless block alignment > 8 in which case header size 8 and we shift the start of the block but header is guaranteed to fit and aligned as required)
-            offset += min_header_size_i_below;
-
-            // add size of block, ensure that alignment of block satisfied
-            if (offset % alignment_i_below > 0) {
-                offset += alignment - offset % alignment;
-            }
-
-            // offset now at position where payload of block i lanes below will start
-            offset += size_i_below;
+            // shift offset s.t. block i lanes below fits
+            offset = shift_offset(offset, min_header_size_i_below, alignment_i_below, size_i_below);
         }
     }
     // offset contains offset from malloced ptr to where header of this block will start
 
-
+    // let last thread compute required total length by adding own requirements to offset
     size_t total_superblock_length = 0;
-    if (my_active_lane_id == n_threads - 1) {
-        total_superblock_length = offset;
+    if (my_active_lane_id == n_threads - 1) { 
+        total_superblock_length = shift_offset(offset, min_header_size, alignment, size);
     }
-
-    my_active_lane_id; //
-
-    // TODO get required size from last thread to elected_lane and malloc
-    // TODO identify payload pos and write header
+    total_superblock_length = __shfl_sync(active_mask, total_superblock_length, last_lane);
 
 
-
-
-
-
-
-    // ----------------
-
-    // find out how much memory each thread needs
-    size_t required_size_above = size; // how much all participating threads with lane_id >= own need
-    // after step i, required_size_above holds the required size of next i threads
-    // (including non-active threads for which the shuffle instruction returns 0)
-    for (int i = 1; i < WARP_SIZE - 1; i++) {
-        size_t size_i_above = __shfl_down_sync(active_mask, size, i);
-        // check if result valid. if not both threads are active and participating
-        // in shuffle, then result is undefined
-        if ((i + my_lane_id < WARP_SIZE - 1) && is_active(my_lane_id + i, active_mask)) {
-            required_size_above += size_i_above;
-        }
-    }
-
-    __syncwarp(active_mask);
-
-    // the elected_lane holds the total sum of required sizes
-    size_t required_size_total = __shfl_sync(active_mask, required_size_above, elected_lane);
-
+    // perform malloc of superblock
     char* malloced_ptr = NULL;
-
     // perform coalesced malloc
     if (my_lane_id == elected_lane) {
         malloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
     }
-
     // broadcast alloced ptr to all lanes
     assert(sizeof(size_t) == sizeof(char*)); // make sure we don't change due to cast
     // need to cast as pointers can't be shuffled
     malloced_ptr = (char*) __shfl_sync(active_mask, (size_t) malloced_ptr, elected_lane);
 
-    // header space required for the threads with lower ids
-    int header_size_below = my_active_lane_id * header_size;
-    // compute this thread's memory region
-    size_t* header_ptr = (size_t*) (malloced_ptr + required_size_total - required_size_above + header_size_below);
-
     // write header
-    if (my_lane_id == elected_lane) {
-        // write superblock header
-        *header_ptr = superblock_bit_mask;
-    } else {
-        // write non-superblock header
-
-        // get size of participating block before TODO bug as elected lane does note participate
-        size_t size_before = 0;
-        bool found_size_before = false;
-        for (int i = 1; i < WARP_SIZE - 1; i++) {
-            size_t size_i_below = __shfl_up_sync(active_mask, size, i);
-            // check if result valid. if not both threads are active and participating
-            // in shuffle, then result is undefined
-            if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
-                size_before = size_i_below;
-                found_size_before = true;
-            }
+    offset += header_offset(offset, min_header_size);
+    // work with correct header type
+    if (offset % 8 == 0) {
+        size_t* header_ptr = (size_t*) (malloced_ptr + offset);
+        if (my_lane_id == elected_lane) {
+            // just write is_superblock header
+        } else {
+            // write size
+            // TODO need actual number of bytes to previous header!
+            // need to include padding, need to watch out that still fits
+            *header_ptr = 
         }
-        assert(found_size_before);
-        *header_ptr = size_before;
+    } else if (offset % 4 == 0) {
+        uint32_t* header_ptr = (uint32_t*) (malloced_ptr + offset);
+    } else if (offset % 2 == 0) {
+        uint16_t* header_ptr = (uint16_t*) (malloced_ptr + offset);
+    } else {
+        uint8_t* header_ptr = (uint8_t*) (malloced_ptr + offset);
     }
 
-    // indicate last block
-    if (my_active_lane_id == n_threads - 1) {
-        *header_ptr = *header_ptr | lastblock_bit_mask;
-    }
 
-    // make sure that no blocks are returned for which neighboring blocks are not setup
-    // as this could lead to problems when the returned blocks are freed
     __syncwarp(active_mask);
-
-    return (void*) (header_ptr + 1);
+    return (void*) (header_ptr + 1); // TODO
 }
 
 /*
