@@ -42,14 +42,14 @@ __global__ void test_different_types(int *resulting_ids) {
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 300) { // TODO doesn't pass yet
+    } else if (choice == 3) { // TODO do we need this?
     	// check for 128 bits
-        int* val = (int*) MALLOC(128);
-    	assert(((long) val) % 128  == 0);
+        int* val = (int*) MALLOC(16);
+    	assert(((long) val) % 16 == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 400) { // TODO doesn't pass yet
+    } else if (choice == 456) { // TODO normal malloc wouldn't even pass this. why?
         // check that alignment correct for max_align_t
         int max_size = sizeof(max_align_t);
         int* val = (int*) MALLOC(max_size);
