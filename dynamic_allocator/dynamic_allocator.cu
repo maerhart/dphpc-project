@@ -21,7 +21,7 @@ __device__ void free_baseline(void *memptr) {
 // v1: allocate same sizes for future blocks
 
 struct s_header {
-    int counter;
+    //int counter;
 };
 
 
@@ -31,38 +31,47 @@ __device__ void* malloc_v1(size_t size) {
 	__shared__ void* superblock;
 	if (threadIdx.x == 0) {
 		// allocate new superblock
-		int size_superblock = sizeof(s_header) + blockDim.x * (sizeof(s_header*) + size);
+		//int size_superblock = sizeof(s_header) + blockDim.x * (sizeof(s_header*) + size);
+        int size_superblock = blockDim.x * 80;
 		superblock = malloc(size_superblock);
 		if (superblock == NULL) {
 			printf("V1: failed to allocate %llu bytes on device\n", (long long unsigned)(size_superblock));
 			return NULL;
 		}
 		// initialize header	
-		struct s_header* header;
-		header = (s_header*)superblock;
-		header->counter = blockDim.x;
+		//struct s_header* header;
+		//header = (s_header*)superblock;
+		//header->counter = blockDim.x;
 	}
 	__syncthreads();
 
 	if (superblock == NULL) return NULL;
 
 	// ptr to individual memory offset
-    s_header* ptr = (s_header*)((char*)superblock + sizeof(s_header) + threadIdx.x * (size + sizeof(s_header*)));
+    //s_header* ptr = (s_header*)((char*)superblock + /*sizeof(s_header) +*/ threadIdx.x * (size + sizeof(s_header*)));
+    s_header* ptr = (s_header*)((char*)superblock + /*sizeof(s_header) +*/ threadIdx.x * 80);
 	// set pointer to superblock header
 	*ptr = *(s_header*)superblock;
 	// return the pointer to the data section
-	return (void*)(ptr + 1);
+	//return (void*)(ptr + 1);
+    return (void*)(ptr);
 }
 
 __device__ void free_v1(void* memptr) {
+    __syncthreads();
+    if (threadIdx.x == 0) {
+     free(memptr);
+    }
+    /*
 	// decrease counter
 	s_header* header = (s_header*)memptr - 1;    
 	int count = atomicSub(&(header->counter), 1);
 	// last thread frees superblock
 	if (count == 1) free(header);
+    */
 }
 
-
+/*
 
 // v2: no spaceing between data, use hashmap to know mapping from address to superblock
 #define SIZE_HASH_MAP 1000
@@ -120,7 +129,7 @@ __device__ void free_v2(void* memptr) {
     // last thread frees superblock
     if (count == 0) free(header);
 }
-/*
+
 struct KeyValue {
     void *key;
     void *value;
