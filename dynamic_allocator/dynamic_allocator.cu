@@ -121,4 +121,159 @@ __device__ void free_v2(void* memptr) {
     if (count == 0) free(header);
 }
 
+struct KeyValue {
+    void *key;
+    void *value;
+};
 
+__constant__ uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
+__constant__ uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
+__constant__ void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
+
+// 32 bit Murmur3 hash
+//__device__ uint32_t hash(uint32_t k) {
+//    k ^= k >> 16;
+//    k *= 0x85ebca6b;
+//    k ^= k >> 13;
+//    k *= 0xc2b2ae35;
+//    k ^= k >> 16;
+//    return k & (capacity-1);
+//}
+
+__device__ uint64_t hash_v3(uint64_t x) {
+    x ^= x >> 27;
+    x *= 0x3C79AC492BA7B653UL;
+    x ^= x >> 33;
+    x *= 0x1C69B3F74AC4AE35UL;
+    x ^= x >> 27;
+    return x & (capacity_v3-1);
+}
+
+__device__ void insert_v3(KeyValue* hashtable, KeyValue* kv, bool *success) {
+    void *key = kv->key;
+    void *value = kv->value;
+    uint64_t slot = hash_v3((uint64_t) key);
+    uint64_t slot_start = slot;
+    while (true) {
+        void *prev = (void *) atomicCAS((unsigned long long int *)(&hashtable[slot].key),(unsigned long long int) empty, (unsigned long long int) key);
+        if (prev == empty || prev == key) {
+            hashtable[slot].value = value;
+            *success = true;
+            return;
+        }
+        slot = (slot + 1) & (capacity_v3 - 1);
+        if(slot == (slot_start + max_chain_v3) % capacity_v3) {
+            *success = false;
+            return;
+        }
+    }
+}
+
+__device__ void lookup_v3(KeyValue *hashtable, KeyValue *kv) {
+    void *key = kv->key;
+    uint64_t slot = hash_v3((uint64_t)key);
+
+    while (true) {
+        if(hashtable[slot].key == key) {
+            kv->value = hashtable[slot].value;
+            return;
+        } else if(hashtable[slot].key == empty) {
+            kv->value = empty;
+            return;
+        }
+        slot = (slot + 1) & (capacity_v3 - 1);
+    }
+}
+
+// Cannot remove the assigned slot, otherwise all keys that come after ''will get lost''
+__device__ void remove_v3(KeyValue *hashtable, KeyValue *kv) {
+    void *key = kv->key;
+    uint64_t slot = hash_v3((uint64_t)key);
+
+    while (true) {
+        if(hashtable[slot].key == key) {
+            hashtable[slot].value = empty;
+            return;
+        } else if(hashtable[slot].key == empty) {
+            return;
+        }
+        slot = (slot + 1) & (capacity_v3 - 1);
+    }
+}
+
+__shared__ KeyValue *table;
+__shared__ void **mem;
+
+__device__ void init_malloc_v3() {
+    if(!threadIdx.x) {
+        table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
+	mem = (void **) malloc(sizeof(void *));
+        if(table != NULL && mem != NULL) {
+            memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
+	} else {
+	    printf("block %i table not inited %p \n", blockIdx.x, table);
+	}
+    }
+    auto block = cooperative_groups::this_thread_block();
+    block.sync();
+}
+
+__device__ void clean_malloc_v3() {
+    auto block = cooperative_groups::this_thread_block();
+    block.sync();
+    if(!threadIdx.x) {
+        free(table);
+        table = NULL;
+    }
+    block.sync();
+}
+__device__ void* malloc_v3(size_t size) {
+    if (!threadIdx.x) {
+	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
+        *mem = malloc(size * blockDim.x + sizeof(int));
+	if (*mem == NULL) {
+	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
+	    return NULL;
+	}
+        // Initialize counter
+        **(int**)mem = blockDim.x;
+    }
+
+    auto block = cooperative_groups::this_thread_block();
+
+    block.sync();
+
+    void *ptr = (char*)*mem + sizeof(int) + threadIdx.x * size;
+    KeyValue kv = {
+        .key = (void *) ptr,
+        .value = (void *) *mem
+    };
+
+    bool success;
+    insert_v3(table, &kv, &success);
+
+    block.sync();
+
+    if(success) {
+	//printf("block %i thread %i has address %p\n", blockIdx.x, threadIdx.x, ptr);
+        return ptr;
+    } else {
+        return NULL;
+    }
+}
+
+__device__ void free_v3(void *memptr) {
+    KeyValue kv = {
+        .key = memptr,
+        .value = empty
+    };
+
+    lookup_v3(table, &kv);
+    int *counter_ptr = (int *) kv.value;
+    int counter = atomicSub(counter_ptr, 1);
+    remove_v3(table, &kv);
+
+    if (counter == 1) {
+        free(counter_ptr);
+    }
+}

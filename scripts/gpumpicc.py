@@ -9,17 +9,23 @@ from typing import List, Tuple
 
 source_extensions = (".c", ".cpp", ".cxx")
 
-def detect_sources_and_args(comilation_params: List[str]) -> Tuple[List[str], List[str]]:
+def detect_sources_and_args(comilation_params: List[str]) -> Tuple[List[str], List[str], List[str]]:
     compilation_sources = []
     compilation_args = []
+    converter_args = []
 
+    seen_separator = False
     for arg in compilation_params:
-        if arg.lower().endswith(source_extensions):
+        if arg == "--":
+            seen_separator = True
+        elif arg.lower().endswith(source_extensions):
             compilation_sources.append(arg)
-        else:
+        elif seen_separator:
             compilation_args.append(arg)
+        else:
+            converter_args.append(arg)
 
-    return compilation_sources, compilation_args
+    return compilation_sources, compilation_args, converter_args
     
 
 def get_mpi_flags() -> Tuple[List[str], List[str]]:
@@ -62,7 +68,7 @@ def cuda_compatible_compilation_args(compilation_args: List[str]) -> List[str]:
     return clean_args
 
 
-def get_header_depenency_lists(comilation_params: List[str]) -> List[Tuple[str, List[str]]]:
+def get_header_depenency_lists(compilation_params: List[str]) -> List[Tuple[str, List[str]]]:
     # remove -o option capture result from standard output
     fixed_params = []
     comp_params_iter = iter(compilation_params)
@@ -116,7 +122,7 @@ if __name__ == '__main__':
     converter_path = scripts_dir + "/../source_converter/converter"
 
     compilation_params: List[str] = sys.argv[1:]
-    compilation_sources, compilation_args = detect_sources_and_args(compilation_params)
+    compilation_sources, compilation_args, converter_args = detect_sources_and_args(compilation_params)
 
     mpi_compile_flags, mpi_link_flags = get_mpi_flags()
 
@@ -143,7 +149,7 @@ if __name__ == '__main__':
     # if there are no compilation_sources, then probably compiler wrapper is used for linking only, so we will not run converter on it
     if compilation_sources:
 
-        tu_header_deps = get_header_depenency_lists(compilation_params)
+        tu_header_deps = get_header_depenency_lists(compilation_sources+compilation_args)
 
         # Before running converter, we manually create copies of files with ".cu" or ".cuh" suffix, because
         # when converter doesn't make any modifications to the file, it just skips it.
@@ -158,8 +164,8 @@ if __name__ == '__main__':
                 shutil.copyfile(header, new_header)
 
         # run code converter
-        command = [converter_path, *compilation_sources, "--", *compilation_args, *mpi_compile_flags]
-        #print("command:", " ".join(command))
+        command = [converter_path, *compilation_sources, *converter_args, "--", *compilation_args, *mpi_compile_flags]
+        # print("command:", " ".join(command))
         subprocess.run(command, check=True)
     
         for tu_dep in tu_header_deps:

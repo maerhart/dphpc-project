@@ -36,4 +36,16 @@ __device__ void* __gpu_calloc(size_t nmemb, size_t size, bool coalesced=false);
 
 __device__ void __gpu_free(void *memptr);
 
+__device__ void __gpu_free(void *memptr);
+
+__device__ void* __gpu_malloc_coalesce(size_t size, bool coalesced=false);
+
+__device__ void* __gpu_calloc_coalesce(size_t nmemb, size_t size, bool coalesced=false);
+
+__device__ void __gpu_free_coalesce(void *memptr);
+
+__device__ void __gpu_init_malloc();
+
+__device__ void __gpu_clean_malloc();
+
 #endif
