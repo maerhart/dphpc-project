@@ -1,9 +1,10 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
-#include "warp_malloc.cu"
+//#include "warp_malloc.cu"
+#include "warp_malloc_v2.cu"
 
-#define MALLOC malloc_v4
-#define FREE free_v4
+#define MALLOC malloc_v5
+#define FREE free_v5
 
 // allocate one int per thread and set to threadId
 __global__ void test(int *resulting_ids) {

@@ -62,19 +62,16 @@ __device__ size_t header_end_offset(size_t offset, size_t min_header_size, size_
     assert(sizeof(size_t) == 8);
     size_t offset_initial = offset;
 
-    // ensure alignment of header
-    offset = pad_align(offset, min_header_size);
-
-    // ensure that header aligned not by more than x if header size = x < 8 (necessary for free)
-    if (min_header_size < 8 && offset % (2 * min_header_size) == 0) {
-        offset += min_header_size; // now "misaligned" enough
-    }
-
+    // ensure that header start aligned by 2*x if header size = x < 8 (necessary for free)
+    // -> header end (= payload start) not aligned by >x as shifted by x
+    offset = pad_align(offset, min((size_t) 8, 2 * min_header_size));
     // offset now at position where header of block can start
+
+    // write size of header
     offset += min_header_size;
 
     // due to precondition this further padding will only happen in the case min_header_size = 8
-    // and it will not destroy padding to min_header_size
+    // in which case it will not interfere with "misalignment requirements" which only exist for smaller headers
     offset = pad_align(offset, payload_alignment);
 
     assert(offset - offset_initial <= MAX_HEADER_PAD);
@@ -295,8 +292,6 @@ __device__ void free_v5(void* memptr) {
         // block is not last block -> done (only last block does work
         return;
     }
-
-    printf("In free thread %d\n", threadIdx.x);
 
     // from here on, we know that we have the last block
     // --> go through all prev blocks as described above
