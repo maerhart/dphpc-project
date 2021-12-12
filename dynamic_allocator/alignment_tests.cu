@@ -4,7 +4,7 @@
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 #define VERBOSE true
-#define SIZE 1*sizeof(float)
+#define SIZE 37*sizeof(float)
 
 __global__ void baseline(uintptr_t *malloc_locations) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
