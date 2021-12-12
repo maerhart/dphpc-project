@@ -243,9 +243,9 @@ int main(int argc, char **argv) {
 					sum_reduce_baseline<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
 				 );
-			//print_arr(mean_runtimes_malloc, num_runs);
+			print_arr(mean_runtimes_malloc, num_runs);
             print_arr(mean_runtimes_work, num_runs);
-            //print_arr(mean_runtimes_free, num_runs);
+            print_arr(mean_runtimes_free, num_runs);
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
@@ -257,9 +257,9 @@ int main(int argc, char **argv) {
 					sum_reduce_v1_flo<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
 				}
 				 );
-			//print_arr(mean_runtimes_malloc, num_runs);
+			print_arr(mean_runtimes_malloc, num_runs);
             print_arr(mean_runtimes_work, num_runs);
-            //print_arr(mean_runtimes_free, num_runs);
+            print_arr(mean_runtimes_free, num_runs);
             //print_arr(max_runtimes_malloc, num_runs);
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
