@@ -99,7 +99,7 @@ __device__ void compute_min_header_size_alignment(size_t size, size_t space_prev
     // upper bound on space required by previous block where we count the padding of this blocks header too
     size_t bound_space_prev_block = space_prev_block_payload + MAX_HEADER_PAD;
 
-    if (size < 2 && bound_space_prev_block < 32) { // 2 ^ (8-3)
+    /* if (size < 2 && bound_space_prev_block < 32) { // 2 ^ (8-3) // TODO cannot use atomicCAS on char and on short only with compute capability >= 7
         // can 1-align header as no 2-alignment required
         res_alignment = 1;
         // can fit in 1 byte / 8 bits together with header
@@ -107,7 +107,7 @@ __device__ void compute_min_header_size_alignment(size_t size, size_t space_prev
     } else if (size < 4 &&  bound_space_prev_block < 8192) { // 2 ^ (16 - 3)
         res_alignment = 2;
         res_min_header_size = 2;
-    } else if (size < 8 &&  bound_space_prev_block < 536870912) { // 2 ^ (32 - 3)
+    } else */ if (size < 8 &&  bound_space_prev_block < 536870912) { // 2 ^ (32 - 3)
         res_alignment = 4;
         res_min_header_size = 4;
     } else if (size < 16) { // know that space_prev_block fits from initial check
@@ -231,14 +231,45 @@ __device__ void* malloc_v5(size_t size) {
         write_header<size_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
     } else if (payload_start_num % 4 == 0) {
         write_header<uint32_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
-    } else if (payload_start_num % 2 == 0) {
-        write_header<uint16_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
     } else {
-        write_header<uint8_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
+        write_header<uint16_t>(payload_start_ptr, is_elected, is_last, prev_payload_start_ptr);
     }
 
     __syncwarp(active_mask); // required s.t. not uninitialized headers are looked at during free
     return payload_start_ptr;
+}
+
+
+typedef unsigned int min_h_t; // uint32_t header are the smallest headers we can use in compute capability 6
+
+template<typename T>
+__device__ min_h_t* read_header_templ(char* payload_start_ptr, size_t& size_result) {
+   T* header_ptr = ((T*) payload_start_ptr) - 1;
+
+   // read size
+   size_result = (size_t) (*header_ptr & ~(((T) 7) << (8 * sizeof(T) - 3)));
+
+   return (min_h_t*) header_ptr;
+}
+
+
+/**
+ * read the header of a block
+ * @param payload_start_ptr Ptr to start of payload
+ * @param size_result Will hold size of prev block stored in header
+ *
+ * @return Pointer to start of header
+ */
+__device__ min_h_t* read_header(char* payload_start_ptr, size_t& size_result) {
+    size_t payload_start_num = (size_t) payload_start_ptr;
+    // work with correct header type
+    if (payload_start_num % 8 == 0) {
+        return read_header_templ<size_t>(payload_start_ptr, size_result);
+    } else {// if (payload_start_num % 4 == 0) {
+        return read_header_templ<uint32_t>(payload_start_ptr, size_result);
+    } /*else { currently not supported
+        return read_header_templ<uint16_t>(payload_start_ptr, size_result);
+    }*/
 }
 
 /*
@@ -248,47 +279,46 @@ __device__ void* malloc_v5(size_t size) {
  *	- find superblock (that is free) -> call free
  */
 __device__ void free_v5(void* memptr) {
-    assert(false); // unimplemented
 
-    // check preconditions. If this is not given need rewrite bit manipulations
-    assert(sizeof(size_t) == sizeof(void*));
-    assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
-    size_t header_size = sizeof(void*);
+    min_h_t superblock_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 1;
+    min_h_t free_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 2;
+    min_h_t lastblock_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 3;
 
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
-    const size_t size_mask = ~ (free_bit_mask | superblock_bit_mask | lastblock_bit_mask);
+    char* payload_start_ptr = (char*) memptr;
+    size_t size_prev_block;
+    min_h_t* header_start = read_header(payload_start_ptr, size_prev_block); // points to start of header (header might be larger than 16 bits)
 
-    size_t* header_ptr = ((size_t*) memptr) - 1;
+    // mark block as free
+    *header_start = *header_start | free_bit_mask;
 
-    // set block to free
-    *header_ptr = *header_ptr | free_bit_mask;
-
-    if (!(*header_ptr & lastblock_bit_mask)) {
-        return; // if we're not the last block, we're done
+    if (!(*header_start & lastblock_bit_mask)) {
+        // block is not last block -> done (only last block does work
+        return;
     }
+
+    printf("In free thread %d\n", threadIdx.x);
 
     // from here on, we know that we have the last block
     // --> go through all prev blocks as described above
 
-    size_t header = *header_ptr;
+    min_h_t header_bits = *header_start;
     do {
         do {
-            // header ptr points to a freed block's header
-            if (header & superblock_bit_mask) {
+            // payload_start_ptr, header_start, and header_bits contain freed block's info
+            if (header_bits & superblock_bit_mask) {
                 // if we reach the superblock and it's free we're done
-                free(header_ptr);
+                free(header_start);
                 return;
             }
-            size_t size_prev_block = size_mask & header;
-            header_ptr = (size_t*) (((char*) header_ptr) - header_size - size_prev_block);
-            header = *header_ptr;
-        } while (header & free_bit_mask);
+            // look at block before
+            payload_start_ptr  = (((char*) header_start) - size_prev_block);
+            min_h_t* header_start = read_header(payload_start_ptr, size_prev_block);
+            header_bits = *header_start;
+        } while (header_bits & free_bit_mask);
 
         // reached a non-free block -> try to set it to last block if it has not been modified inbetween
         // note that modified = freed here as no other modifications possible
-    } while (atomicCAS((long long unsigned int*) header_ptr, (long long unsigned int) header, (long long unsigned int) (header | lastblock_bit_mask)) != header);
+    } while (atomicCAS(header_start, header_bits, (header_bits | lastblock_bit_mask)) != header_bits);
     // if the above CAS fails, we know that the block header has been modified -> block freed, and we
     // will continue walking through the free blocks
 
