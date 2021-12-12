@@ -60,7 +60,7 @@ __device__ void sum_all_prod(int n, float* ptr) {
 
 
 // measure 3 individual times for malloc/free and workload
-__global__ void sum_reduce_baseline(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
@@ -82,7 +82,7 @@ __global__ void sum_reduce_baseline(int num_floats, clock_t* runtime_malloc, clo
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void sum_reduce_v1(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
@@ -104,7 +104,7 @@ __global__ void sum_reduce_v1(int num_floats, clock_t* runtime_malloc, clock_t* 
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();

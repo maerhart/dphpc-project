@@ -71,8 +71,8 @@ __device__ void free_v1(void* memptr) {
     */
 }
 
-/*
 
+/*
 // v2: no spaceing between data, use hashmap to know mapping from address to superblock
 #define SIZE_HASH_MAP 1000
 __shared__ s_header* hashmap[SIZE_HASH_MAP];
@@ -129,6 +129,7 @@ __device__ void free_v2(void* memptr) {
     // last thread frees superblock
     if (count == 0) free(header);
 }
+*/
 
 struct KeyValue {
     void *key;
@@ -211,13 +212,13 @@ __device__ void remove_v3(KeyValue *hashtable, KeyValue *kv) {
 }
 
 __shared__ KeyValue *table;
-__shared__ void **mem;
+__shared__ void **mem_v3;
 
 __device__ void init_malloc_v3() {
     if(!threadIdx.x) {
         table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-	mem = (void **) malloc(sizeof(void *));
-        if(table != NULL && mem != NULL) {
+	mem_v3 = (void **) malloc(sizeof(void *));
+        if(table != NULL && mem_v3 != NULL) {
             memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
 	} else {
 	    printf("block %i table not inited %p \n", blockIdx.x, table);
@@ -239,23 +240,23 @@ __device__ void clean_malloc_v3() {
 __device__ void* malloc_v3(size_t size) {
     if (!threadIdx.x) {
 	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
-        *mem = malloc(size * blockDim.x + sizeof(int));
-	if (*mem == NULL) {
+        *mem_v3 = malloc(size * blockDim.x + sizeof(int));
+	if (*mem_v3 == NULL) {
 	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
 	    return NULL;
 	}
         // Initialize counter
-        **(int**)mem = blockDim.x;
+        **(int**)mem_v3 = blockDim.x;
     }
 
     auto block = cooperative_groups::this_thread_block();
 
     block.sync();
 
-    void *ptr = (char*)*mem + sizeof(int) + threadIdx.x * size;
+    void *ptr = (char*)*mem_v3 + sizeof(int) + threadIdx.x * size;
     KeyValue kv = {
         .key = (void *) ptr,
-        .value = (void *) *mem
+        .value = (void *) *mem_v3
     };
 
     bool success;
@@ -285,4 +286,4 @@ __device__ void free_v3(void *memptr) {
     if (counter == 1) {
         free(counter_ptr);
     }
-}*/
+}
