@@ -1,10 +1,11 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
-#include "warp_malloc.cu"
+//#include "warp_malloc.cu"
+#include "warp_malloc_v2.cu"
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
-#define MALLOC malloc_v4
-#define FREE free_v4
+#define MALLOC malloc_v5
+#define FREE free_v5
 
 // allocate one int per thread and set to threadId
 __global__ void test(int *resulting_ids) {
@@ -48,29 +49,98 @@ __global__ void test_different_types(int *resulting_ids) {
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 2) {
-        long int* val = (long int*) MALLOC(sizeof(long int));
+        long int* val = (long int*) MALLOC(sizeof(long int)); // size 64 bits
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 3) {
-        long long int* val = (long long int*) MALLOC(sizeof(long long int));
+    } else if (choice == 3) { // TODO do we need this?
+    	// check for 128 bits
+        int* val = (int*) MALLOC(16);
+    	assert(((long) val) % 16 == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
-    } else if (choice == 1234) {
-	    /* TODO
-	// check that works with max_align_t
-	assert(sizeof(max_align_t) == sizeof(long double));
-        max_align_t* val = (max_align_t*) MALLOC(sizeof(max_align_t));
+    } else if (choice == 456) { // TODO normal malloc wouldn't even pass this. why?
+        // check that alignment correct for max_align_t
+        int max_size = sizeof(max_align_t);
+        int* val = (int*) MALLOC(max_size);
+    	assert(((long) val) % max_size == 0);
         *val = id;
-        resulting_ids[id] = (int) *val;
+        resulting_ids[id] = *val;
         FREE(val);
-	*/
     } else {
         int* val = (int*) MALLOC(sizeof(int));
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
+    }
+}
+
+/**
+ * Passes pointers around and doesn't free all at same time
+ */
+__global__ void test_pass_ptrs(int *resulting_ids) {
+
+    __shared__ int** ptrs;
+    // let thread 0 in block allocate array for entire block
+    if (threadIdx.x == 0) {
+        ptrs = (int**) MALLOC(sizeof(int*) * blockDim.x);
+    } 
+    __syncthreads();
+
+    // malloc int and share pointer
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    int* val = (int*) MALLOC(sizeof(int));
+    assert(val != NULL);
+    ptrs[threadIdx.x] = val;
+    __syncthreads();
+
+    // NOTE lane and warp get modified for the shuffling of values
+    int lane = threadIdx.x % 32;
+    int warp = threadIdx.x / 32;
+    bool even_thread = lane % 2 == 0 && warp % 2 == 0;
+
+    // write id if everything even
+    if (even_thread) {
+        *val = id;
+    }
+    __syncthreads(); // make sure that pointer written before read
+    if (even_thread) {
+        // shuffle pointers around warps
+
+        // map lane i warp j  -> warp i lane j
+        // if i >= #warps or j >= #lanes => leave
+
+        if (lane < blockDim.x / 32 && warp < 32) {
+            int temp = lane;
+            lane = warp;
+            warp = temp;
+        }
+        
+        val = ptrs[warp * 32 + lane];
+        resulting_ids[id] = *val;
+        FREE(val);
+    }
+
+    // do the same for odd threads
+    if (!even_thread) {
+        *val = id;
+    }
+    __syncthreads();
+    if (!even_thread) {
+        if (lane < blockDim.x / 32 && warp < 32) {
+            int temp = lane;
+            lane = warp;
+            warp = temp;
+        }
+        val = ptrs[warp * 32 + lane];
+        resulting_ids[id] = *val;
+        FREE(val);
+    }
+
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        FREE(ptrs);
     }
 }
 
@@ -117,13 +187,12 @@ void run_test(const std::string& name, int blocks, int threads_per_block, void(*
 
 int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
-    int blocks = 64;
-    int threads_per_block = 32;
-    run_test("basic", blocks, threads_per_block, test);
-    run_test("10 floats", blocks, threads_per_block, test_floats);
+    int blocks = 100;
+    int threads_per_block = 128;
+    run_test("basic          ", blocks, threads_per_block, test);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("different types", blocks, threads_per_block, test_different_types);
-
+    run_test("pass ptrs      ", blocks, threads_per_block, test_pass_ptrs);
 
     return 0;
 }

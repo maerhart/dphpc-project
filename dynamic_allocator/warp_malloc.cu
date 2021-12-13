@@ -26,7 +26,7 @@ __device__ int active_lane_id(uint32_t active_mask) {
 }
 
 __device__ bool is_active(int lid, uint32_t active_mask) {
-    return (((uint32_t) 1) << lid) & active_mask;
+    return lid >= 0 && lid < WARP_SIZE && ((((uint32_t) 1) << lid) & active_mask);
 }
 
 /**
@@ -44,18 +44,21 @@ __device__ bool is_active(int lid, uint32_t active_mask) {
  *     - threads cannot move to different warps
  */
 __device__ void* malloc_v4(size_t size) {
-    // check preconditions. If this is not given need rewrite bit manipulations
-    assert(sizeof(size_t) == sizeof(void*));
-    size_t header_size = sizeof(void*) * 8;
+    assert(sizeof(max_align_t) == 32);
+    int alignment = 16; // TODO normal malloc doesn't necessarily align to 32 byte. Why? and doe we need to align to 16 even?
 
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    size_t header_size_no_pad = sizeof(size_t);
+    // pad to align 
+    size_t header_size = alignment;
+    assert(header_size >= header_size_no_pad);
+
+    const size_t free_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 3);
 
     // adjust size for alignment purposes
-    // TODO handle better
-    if (size % 8 != 0) {
-        size += 8 - size % 8;
+    if (size % alignment != 0) {
+        size += alignment - size % alignment;
     }
 
     // assert special bits not used
@@ -79,11 +82,11 @@ __device__ void* malloc_v4(size_t size) {
     size_t required_size_above = size; // how much all participating threads with lane_id >= own need
     // after step i, required_size_above holds the required size of next i threads
     // (including non-active threads for which the shuffle instruction returns 0)
-    for (int i = 1; i < WARP_SIZE - 1; i++) {
+    for (int i = 1; i < WARP_SIZE; i++) {
         size_t size_i_above = __shfl_down_sync(active_mask, size, i);
         // check if result valid. if not both threads are active and participating
         // in shuffle, then result is undefined
-        if ((i + my_lane_id < WARP_SIZE - 1) && is_active(my_lane_id + i, active_mask)) {
+        if (is_active(my_lane_id + i, active_mask)) {
             required_size_above += size_i_above;
         }
     }
@@ -98,6 +101,7 @@ __device__ void* malloc_v4(size_t size) {
     // perform coalesced malloc
     if (my_lane_id == elected_lane) {
         malloced_ptr = (char*) malloc(required_size_total + n_threads * header_size);
+        assert((long)malloced_ptr % alignment == 0);
     }
 
     // broadcast alloced ptr to all lanes
@@ -106,32 +110,33 @@ __device__ void* malloc_v4(size_t size) {
     malloced_ptr = (char*) __shfl_sync(active_mask, (size_t) malloced_ptr, elected_lane);
 
     // header space required for the threads with lower ids
-    int header_size_below = my_active_lane_id * header_size;
+    size_t header_size_below = my_active_lane_id * header_size;
     // compute this thread's memory region
     size_t* header_ptr = (size_t*) (malloced_ptr + required_size_total - required_size_above + header_size_below);
 
-    // write header
+    // write headers
+
+    // get size of participating block before
+    size_t size_before = 0;
+    bool found_size_before = false;
+    for (int i = 1; i < WARP_SIZE; i++) {
+        size_t size_i_below = __shfl_up_sync(active_mask, size, i);
+        // check if result valid. if not both threads are active and participating
+        // in shuffle, then result is undefined
+        if (!found_size_before && is_active(my_lane_id - i, active_mask)) {
+            size_before = size_i_below;
+            found_size_before = true;
+        }
+    }
     if (my_lane_id == elected_lane) {
         // write superblock header
         *header_ptr = superblock_bit_mask;
-    } else {
+    }  else {
         // write non-superblock header
-
-        // get size of participating block before
-        size_t size_before = 0;
-        bool found_size_before = false;
-        for (int i = 1; i < WARP_SIZE - 1; i++) {
-            size_t size_i_below = __shfl_up_sync(active_mask, size, i);
-            // check if result valid. if not both threads are active and participating
-            // in shuffle, then result is undefined
-            if (!found_size_before && (my_lane_id - i >= 0) && is_active(my_lane_id - i, active_mask)) {
-                size_before = size_i_below;
-                found_size_before = true;
-            }
-        }
         assert(found_size_before);
         *header_ptr = size_before;
     }
+
 
     // indicate last block
     if (my_active_lane_id == n_threads - 1) {
@@ -142,7 +147,7 @@ __device__ void* malloc_v4(size_t size) {
     // as this could lead to problems when the returned blocks are freed
     __syncwarp(active_mask);
 
-    return (void*) (header_ptr + 1);
+    return (void*) (((char*) header_ptr) + header_size);
 }
 
 /*
@@ -152,17 +157,21 @@ __device__ void* malloc_v4(size_t size) {
  *	- find superblock (that is free) -> call free
  */
 __device__ void free_v4(void* memptr) {
-    // check preconditions. If this is not given need rewrite bit manipulations
-    assert(sizeof(size_t) == sizeof(void*));
     assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
-    size_t header_size = sizeof(void*);
+    assert(sizeof(max_align_t) == 32);
+    int alignment = 16; // TODO see above
 
-    const size_t free_bit_mask = ((size_t) 1) << (header_size - 1);
-    const size_t superblock_bit_mask = ((size_t) 1) << (header_size - 2);
-    const size_t lastblock_bit_mask = ((size_t) 1) << (header_size - 3);
+    size_t header_size_no_pad = sizeof(size_t);
+    // pad to align 
+    size_t header_size = alignment;
+    assert(header_size >= header_size_no_pad);
+
+    const size_t free_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 1);
+    const size_t superblock_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 2);
+    const size_t lastblock_bit_mask = ((size_t) 1) << (8 * header_size_no_pad - 3);
     const size_t size_mask = ~ (free_bit_mask | superblock_bit_mask | lastblock_bit_mask);
 
-    size_t* header_ptr = ((size_t*) memptr) - 1;
+    size_t* header_ptr = (size_t*) (((char*) memptr) - header_size);
 
     // set block to free
     *header_ptr = *header_ptr | free_bit_mask;
