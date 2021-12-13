@@ -2,6 +2,7 @@
 #include "dynamic_allocator.cu"
 #include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
+#include "../../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 
 // *** Workloads ***
@@ -105,6 +106,28 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     runtime_free[id] = end_free - start_free;
 }
 
+__global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)dyn_malloc(num_floats * sizeof(float));
+    //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	 init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    dyn_free(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
 __global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
@@ -141,7 +164,7 @@ __global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
 	init_inc(num_floats, ptr);
     
     clock_t start_work = clock64();
-	sum_reduce(num_floats, ptr);
+	${WORKLOAD}(num_floats, ptr);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
@@ -163,7 +186,7 @@ __global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
 	init_inc(num_floats, ptr);
     
     clock_t start_work = clock64();
-	sum_reduce(num_floats, ptr);
+	${WORKLOAD}(num_floats, ptr);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
