@@ -3,7 +3,7 @@
 #include "dynamic_allocator.cu"
 #include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
-//#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
+#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 
 // *** Workloads ***
