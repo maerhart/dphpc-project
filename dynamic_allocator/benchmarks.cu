@@ -3,7 +3,7 @@
 #include "dynamic_allocator.cu"
 #include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
-#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
+//#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 
 // *** Workloads ***
@@ -112,7 +112,7 @@ __global__ void sum_reduce_v1_flo(int num_floats, clock_t* runtime_malloc, clock
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
-
+/*
 // v1 Martin
 __global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
@@ -134,7 +134,7 @@ __global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, cl
     dyn_free(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
-}
+}*/
 /*
 __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
             /*
-			// v3
+            // v3
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
 					sum_reduce_v3<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
@@ -312,6 +312,7 @@ int main(int argc, char **argv) {
             //print_arr(max_runtimes_work, num_runs);
             //print_arr(max_runtimes_free, num_runs);
             */
+            
 			// v4
             run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block,
 				[num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
