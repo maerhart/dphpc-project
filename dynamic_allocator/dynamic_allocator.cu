@@ -139,6 +139,7 @@ struct KeyValue {
 __constant__ uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
 __constant__ uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
 __constant__ void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
+__constant__ uint32_t alignment = 16;
 
 // 32 bit Murmur3 hash
 //__device__ uint32_t hash(uint32_t k) {
@@ -238,9 +239,11 @@ __device__ void clean_malloc_v3() {
     block.sync();
 }
 __device__ void* malloc_v3(size_t size) {
+    int header = alignment;
+    size += ((alignment - (size % alignment)) % alignment);
     if (!threadIdx.x) {
 	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
-        *mem_v3 = malloc(size * blockDim.x + sizeof(int));
+        *mem_v3 = malloc(size * blockDim.x + header);
 	if (*mem_v3 == NULL) {
 	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
 	    return NULL;
@@ -253,7 +256,8 @@ __device__ void* malloc_v3(size_t size) {
 
     block.sync();
 
-    void *ptr = (char*)*mem_v3 + sizeof(int) + threadIdx.x * size;
+    void *ptr = (char*)*mem_v3 + header + threadIdx.x * size;
+    *((char *)ptr) = 0;
     KeyValue kv = {
         .key = (void *) ptr,
         .value = (void *) *mem_v3

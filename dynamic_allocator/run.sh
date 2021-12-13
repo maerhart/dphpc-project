@@ -8,12 +8,13 @@ mkdir -p $DIRECTORY
 
 HEADER="version workload runs warmup blocks threads_per_block num_floats malloc_mean malloc_max free_mean free_max work_mean work_max"
 WORKLOADS="sum_reduce prod_reduce max_reduce pair_prod sum_all_prod"
-VERSION="baseline v1_flo v3_nils"
+#VERSION="baseline v1_flo v2_nils v3_anton"
+VERSION="baseline v2_nils"
 BLOCKS=(192 96 48 24 12)
 THREADS=(64 128 256 512 1024)
 
 RUNS="10"
-WU="2"
+WU="3"
 
 rm -r $BUILD
 mkdir $BUILD
