@@ -3,7 +3,7 @@
 #include "dynamic_allocator.cu"
 #include "warp_malloc.cu"
 #include "benchmarks_separate.cu"
-//#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
+#include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 
 // *** Workloads ***
@@ -112,7 +112,7 @@ __global__ void sum_reduce_v1_flo(int num_floats, clock_t* runtime_malloc, clock
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
-/*
+
 // v1 Martin
 __global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
@@ -134,7 +134,8 @@ __global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, cl
     dyn_free(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
-}*/
+}
+
 /*
 __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
