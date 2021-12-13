@@ -1,7 +1,6 @@
 #include <iostream>
 #include "dynamic_allocator.cu"
-//#include "warp_malloc.cu"
-#include "warp_malloc_v2.cu"
+#include "warp_malloc.cu"
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
 #define MALLOC malloc_v5
