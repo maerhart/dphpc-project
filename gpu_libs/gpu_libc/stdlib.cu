@@ -1,4 +1,5 @@
 #include "stdlib.cuh"
+#include "stdio.cuh"
 
 #include "assert.cuh"
 #include "cuda_mpi.cuh"
@@ -66,7 +67,7 @@ __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size
 __device__ void* __gpu_malloc(size_t size) {
     void* ptr = malloc(size);
     #ifndef NDEBUG
-    printf("Performed standard malloc\n");
+    __gpu_fprintf(__gpu_stderr, "Performed standard malloc\n");
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }
@@ -74,8 +75,8 @@ __device__ void* __gpu_malloc(size_t size) {
     return ptr;
 }
 
-__device__ void* __gpu_calloc(size_t nmemb, size_t size, bool coalesced) {
-    void* ptr = __gpu_malloc(nmemb * size, coalesced);
+__device__ void* __gpu_calloc(size_t nmemb, size_t size) {
+    void* ptr = __gpu_malloc(nmemb * size);
     if (ptr) {
         memset(ptr, 0, nmemb * size);
     }
@@ -89,7 +90,7 @@ __device__ void __gpu_free(void *memptr) {
 __device__ void* __gpu_malloc_coalesce(size_t size, bool coalesced) {   
     void* ptr = dyn_malloc(size, coalesced);
     #ifndef NDEBUG
-    printf("Performed dyn_malloc\n");
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }

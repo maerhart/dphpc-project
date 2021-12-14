@@ -17,6 +17,7 @@
 #include "common.h"
 #include "assert.cuh"
 #include "cuda_mpi.cuh"
+#include "stdio.cuh"
 
 #include "libc_processor.cuh"
 
@@ -112,9 +113,9 @@ __global__ void __gpu_main_caller(int argc, char* argv[],
     int max_threads = __gpu_max_threads();
     if (max_threads < active_grid_size) {
         if (sharedState->gridRank() == 0) {
-            printf("GPUMPI: Requested number of threads is %d but program is compiled with max %d threads!\n", active_grid_size, max_threads);
-            printf("GPUMPI: You can increase the number of threads by overriding GPU_MPI_MAX_RANKS environment variable and recompiling the project.\n");
-            printf("GPUMPI: Exitting...\n");
+            __gpu_fprintf(__gpu_stderr, "GPUMPI: Requested number of threads is %d but program is compiled with max %d threads!\n", active_grid_size, max_threads);
+            __gpu_fprintf(__gpu_stderr, "GPUMPI: You can increase the number of threads by overriding GPU_MPI_MAX_RANKS environment variable and recompiling the project.\n");
+            __gpu_fprintf(__gpu_stderr, "GPUMPI: Exitting...\n");
             CudaMPI::recordError("Compiled max number of threads is smaller than requested!");
         }
         return;
@@ -154,8 +155,8 @@ int main(int argc, char* argv[]) {
         threadsPerBlock = 1;
     }
     if (!hasIndependentThreadScheduling && threadsPerBlock > 1) {
-        printf("GPUMPI: GPU doesn't support independent thread scheduling. The max threads per block is limited to 1, while %u requested.\n", threadsPerBlock);
-        printf("GPUMPI: Exitting...\n");
+        fprintf(stderr, "GPUMPI: GPU doesn't support independent thread scheduling. The max threads per block is limited to 1, while %u requested.\n", threadsPerBlock);
+        fprintf(stderr, "GPUMPI: Exitting...\n");
         exit(1);
     }
 
@@ -179,15 +180,15 @@ int main(int argc, char* argv[]) {
     }
 
     if (numProcs > blocksPerGrid * threadsPerBlock) {
-        printf("GPUMPI: Requested number of processes %zu can't be allocated on %u blocks and %u threads\n", numProcs, blocksPerGrid, threadsPerBlock);
-        printf("GPUMPI: Exitting...\n");
+        fprintf(stderr, "GPUMPI: Requested number of processes %zu can't be allocated on %u blocks and %u threads\n", numProcs, blocksPerGrid, threadsPerBlock);
+        fprintf(stderr, "GPUMPI: Exitting...\n");
         exit(1);
     }
-    printf("GPUMPI: Using %zu mpi processes with %u blocks and %u threads on GPU\n", numProcs, blocksPerGrid, threadsPerBlock);
+    fprintf(stderr, "GPUMPI: Using %zu mpi processes with %u blocks and %u threads on GPU\n", numProcs, blocksPerGrid, threadsPerBlock);
 
     int blocksPerMP = -1;
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(&blocksPerMP, __gpu_main_caller, threadsPerBlock, /*sharedMem*/ 0));
-    printf("GPUMPI: Max active blocks per multiprocessor %d (for %d thread(s) per block)\n", blocksPerMP, threadsPerBlock);
+    fprintf(stderr, "GPUMPI: Max active blocks per multiprocessor %d (for %d thread(s) per block)\n", blocksPerMP, threadsPerBlock);
 
     int multiProcessorCount = 0;
     CUDA_CHECK(cudaDeviceGetAttribute(&multiProcessorCount, cudaDevAttrMultiProcessorCount, /*device*/ 0));
@@ -199,11 +200,11 @@ int main(int argc, char* argv[]) {
     // global barrier will cause the deadlock as
     // block 0 can't finish before block N is started and block N can't start before block 0 is finished.
     int maxBlocks = blocksPerMP * multiProcessorCount;
-    printf("GPUMPI: Max number of blocks is %d (for %d thread(s) per block)\n", maxBlocks, threadsPerBlock);
+    fprintf(stderr, "GPUMPI: Max number of blocks is %d (for %d thread(s) per block)\n", maxBlocks, threadsPerBlock);
     
     if (blocksPerGrid > maxBlocks) {
-        printf("GPUMPI: The requested number of blocks (%d) exceeds the maximum number of blocks (%d) supported by GPU.\n", blocksPerGrid, maxBlocks);
-        printf("GPUMPI: Exitting...\n");
+        fprintf(stderr, "GPUMPI: The requested number of blocks (%d) exceeds the maximum number of blocks (%d) supported by GPU.\n", blocksPerGrid, maxBlocks);
+        fprintf(stderr, "GPUMPI: Exitting...\n");
         exit(1);
     }
 
@@ -263,18 +264,18 @@ int main(int argc, char* argv[]) {
     size_t memFree = 0;
     size_t memTotal = 0;
     CUDA_CHECK(cudaMemGetInfo(&memFree, &memTotal));
-    printf("GPUMPI: memFree = %zu, memTotal = %zu\n", memFree, memTotal);
+    fprintf(stderr, "GPUMPI: memFree = %zu, memTotal = %zu\n", memFree, memTotal);
 
     if (heapSize == 0) {
         // leave some free memory for CUDA internal implementation
         // otherwise kernel will not be launched
         double usageRatio = 0.8; 
-        printf("GPUMPI: Heap memory requirements are not specified\n");
-        printf("GPUMPI: Using %d %% of free memory for the heap\n", (int)(usageRatio * 100));
+        fprintf(stderr, "GPUMPI: Heap memory requirements are not specified\n");
+        fprintf(stderr, "GPUMPI: Using %d %% of free memory for the heap\n", (int)(usageRatio * 100));
         heapSize = memFree * usageRatio; 
     }
 
-    printf("GPUMPI: Requested heap memory size is %zu bytes\n", heapSize);
+    fprintf(stderr, "GPUMPI: Requested heap memory size is %zu bytes\n", heapSize);
     CUDA_CHECK(cudaDeviceSetLimit(cudaLimitMallocHeapSize, heapSize));
 
     cudaEvent_t kernelFinishEvent;
