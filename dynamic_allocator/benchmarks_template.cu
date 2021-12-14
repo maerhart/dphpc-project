@@ -4,6 +4,8 @@
 #include "benchmarks_separate.cu"
 #include "../../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
+#define COALESCE true
+
 
 // *** Workloads ***
 
@@ -67,7 +69,7 @@ __global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runti
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
-    float* ptr = (float*)malloc_baseline(num_floats * sizeof(float));
+    float* ptr = (float*)malloc_baseline(num_floats * sizeof(float), COALESCE);
     //printf("ptr_0, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
@@ -80,7 +82,7 @@ __global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_baseline(ptr);
+    free_baseline(ptr, COALESCE);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -89,7 +91,7 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
-    float* ptr = (float*)malloc_v1(num_floats * sizeof(float));
+    float* ptr = (float*)malloc_v1(num_floats * sizeof(float), COALESCE);
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
@@ -102,7 +104,7 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v1(ptr);
+    free_v1(ptr, COALESCE);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -111,7 +113,7 @@ __global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runt
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
-    float* ptr = (float*)dyn_malloc(num_floats * sizeof(float));
+    float* ptr = (float*)dyn_malloc(num_floats * sizeof(float), COALESCE);
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
@@ -124,7 +126,7 @@ __global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runt
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    dyn_free(ptr);
+    dyn_free(ptr, COALESCE);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -134,7 +136,7 @@ __global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     
     clock_t start_malloc = clock64();
     init_malloc_v3();
-    float* ptr = (float*)malloc_v3(num_floats * sizeof(float));
+    float* ptr = (float*)malloc_v3(num_floats * sizeof(float), COALESCE);
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
     
@@ -146,7 +148,7 @@ __global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v3(ptr);
+    free_v3(ptr, COALESCE);
     clean_malloc_v3();
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
@@ -156,7 +158,7 @@ __global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
-    float* ptr = (float*)malloc_v4(num_floats * sizeof(float));
+    float* ptr = (float*)malloc_v4(num_floats * sizeof(float), COALESCE);
     //if (ptr == NULL) printf("allocation Error");
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
@@ -170,7 +172,7 @@ __global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v4(ptr);
+    free_v4(ptr, COALESCE);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -178,7 +180,7 @@ __global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
-    float* ptr = (float*)malloc_v5(num_floats * sizeof(float));
+    float* ptr = (float*)malloc_v5(num_floats * sizeof(float), COALESCE);
     //if (ptr == NULL) printf("allocation Error");
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
@@ -192,7 +194,7 @@ __global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v5(ptr);
+    free_v5(ptr, COALESCE);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }

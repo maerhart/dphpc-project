@@ -155,8 +155,9 @@ __device__ void write_header(void* payload_start_ptr, bool is_superblock, bool i
  *  block 1-aligned <=> Header 1 byte
  *
  */
-__device__ void* malloc_v5(size_t size) {
-
+__device__ void* malloc_v5(size_t size, bool __coalesced) {
+    if (!__coalesced) return malloc(size);
+    
     assert(sizeof(size_t) == 8);
     // check that size < max size which is 2 ^ (64 - 3) - 1 as need to fit size in header together with extra bits
     if (size & (((size_t) 7) << 61) || size < 1) {
@@ -275,7 +276,11 @@ __device__ min_h_t* read_header(char* payload_start_ptr, size_t& size_result) {
  *	- find block that is not freed -> set to be last block
  *	- find superblock (that is free) -> call free
  */
-__device__ void free_v5(void* memptr) {
+__device__ void free_v5(void* memptr, bool __coalesced) {
+    if (!__coalesced) {
+        free(memptr);
+        return;
+    }
 
     min_h_t superblock_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 1;
     min_h_t free_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 2;
@@ -334,7 +339,9 @@ __device__ void free_v5(void* memptr) {
  *     - lane_id cannot change
  *     - threads cannot move to different warps
  */
-__device__ void* malloc_v4(size_t size) {
+__device__ void* malloc_v4(size_t size, bool __coalesced) {
+    if (!__coalesced) return malloc(size);
+    
     assert(sizeof(max_align_t) == 32);
     int alignment = 16; // TODO normal malloc doesn't necessarily align to 32 byte. Why? and doe we need to align to 16 even?
 
@@ -447,7 +454,12 @@ __device__ void* malloc_v4(size_t size) {
  *	- find block that is not freed -> set to be last block
  *	- find superblock (that is free) -> call free
  */
-__device__ void free_v4(void* memptr) {
+__device__ void free_v4(void* memptr, bool __coalesced) {
+    if (!__coalesced) {
+        free(memptr);
+        return;
+    }
+    
     assert(sizeof(size_t) == sizeof(long long unsigned int)); // required for cast in CAS call
     assert(sizeof(max_align_t) == 32);
     int alignment = 16; // TODO see above
