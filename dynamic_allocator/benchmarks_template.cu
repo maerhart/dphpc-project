@@ -82,7 +82,7 @@ __global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_baseline(ptr, COALESCE);
+    free_baseline(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -104,7 +104,7 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v1(ptr, COALESCE);
+    free_v1(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -126,7 +126,7 @@ __global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runt
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    dyn_free(ptr, COALESCE);
+    dyn_free(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -148,7 +148,7 @@ __global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v3(ptr, COALESCE);
+    free_v3(ptr);
     clean_malloc_v3();
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
@@ -172,7 +172,7 @@ __global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v4(ptr, COALESCE);
+    free_v4(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -194,7 +194,7 @@ __global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v5(ptr, COALESCE);
+    free_v5(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }

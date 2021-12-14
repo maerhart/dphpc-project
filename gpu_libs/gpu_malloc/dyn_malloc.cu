@@ -14,8 +14,8 @@
 __shared__ static void *mem;
 
 
-__device__ void *dyn_malloc(size_t size, bool __coalesced) {
-    if(!__coalesced) {
+__device__ void *dyn_malloc(size_t size, bool coalesced) {
+    if(!coalesced) {
         // Ensure compatibility with coalesced case
         // | counter 4B | ptr to counter 8B | returned ptr... |
         void *ptr = malloc(size +256);//+ sizeof(int*) + sizeof(int));
@@ -47,7 +47,7 @@ __device__ void *dyn_malloc(size_t size, bool __coalesced) {
     return ptr;
 }
 
-__device__ void dyn_free(void *memptr, bool __coalesced) {
+__device__ void dyn_free(void *memptr) {
     int32_t *counter_ptr = *(((int32_t**)memptr)-16);
     int32_t counter = atomicAdd(counter_ptr, -1);
 

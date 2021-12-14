@@ -82,7 +82,7 @@ __global__ void sum_reduce_baseline(int num_floats, clock_t* runtime_malloc, clo
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_baseline(ptr, COALESCE);
+    free_baseline(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -109,7 +109,7 @@ __global__ void sum_reduce_v1_flo(int num_floats, clock_t* runtime_malloc, clock
     
     clock_t start_free = clock64();
     //dyn_free(ptr);
-    free_v1(ptr, COALESCE);
+    free_v1(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -132,7 +132,7 @@ __global__ void sum_reduce_v1_martin(int num_floats, clock_t* runtime_malloc, cl
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    dyn_free(ptr, COALESCE);
+    dyn_free(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -155,7 +155,7 @@ __global__ void sum_reduce_v3(int num_floats, clock_t* runtime_malloc, clock_t* 
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v3(ptr, COALESCE);
+    free_v3(ptr);
     clean_malloc_v3();
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
@@ -179,7 +179,7 @@ __global__ void sum_reduce_v4(int num_floats, clock_t* runtime_malloc, clock_t* 
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v4(ptr, COALESCE);
+    free_v4(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -201,7 +201,7 @@ __global__ void sum_reduce_v5(int num_floats, clock_t* runtime_malloc, clock_t* 
     runtime_work[id] = end_work - start_work;
     
     clock_t start_free = clock64();
-    free_v5(ptr, COALESCE);
+    free_v5(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -213,7 +213,7 @@ __global__ void sum_reduce_baseline_overall(int num_floats) {
 	init_inc(num_floats, ptr);
 	sum_reduce(num_floats, ptr);
     
-    free_baseline(ptr, COALESCE);
+    free_baseline(ptr);
 }
 
 /*

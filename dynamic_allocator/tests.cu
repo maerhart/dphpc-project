@@ -3,13 +3,15 @@
 #include "warp_malloc.cu"
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
+#define COALESCE true
+
 #define MALLOC malloc_v5
 #define FREE free_v5
 
 // allocate one int per thread and set to threadId
 __global__ void test(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    int* val = (int*) MALLOC(sizeof(int));
+    int* val = (int*) MALLOC(sizeof(int), COALESCE);
     *val = id;
     resulting_ids[id] = *val;
     FREE(val);
@@ -18,7 +20,7 @@ __global__ void test(int *resulting_ids) {
 __global__ void test_floats(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(float) * 10;
-    float* val = (float*) MALLOC(size);
+    float* val = (float*) MALLOC(size, COALESCE);
     val[0] = id;  // write to start of segment
     resulting_ids[id] = val[0];
     FREE(val);
@@ -27,7 +29,7 @@ __global__ void test_floats(int *resulting_ids) {
 __global__ void test_different_size(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(int) * (1 + (id % 32));
-    int* val = (int*) MALLOC(size);
+    int* val = (int*) MALLOC(size, COALESCE);
     val[id % 32] = id;  // write to very end of segment
     resulting_ids[id] = val[id % 32];
     FREE(val);
@@ -38,23 +40,23 @@ __global__ void test_different_types(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     int choice = id % 5;
     if (choice == 0 && ((char) id) == id) {
-        char* val = (char*) MALLOC(sizeof(char));
+        char* val = (char*) MALLOC(sizeof(char), COALESCE);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 1 && ((short int) id) == id) {
-        short int* val = (short int*) MALLOC(sizeof(short int));
+        short int* val = (short int*) MALLOC(sizeof(short int), COALESCE);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 2) {
-        long int* val = (long int*) MALLOC(sizeof(long int)); // size 64 bits
+        long int* val = (long int*) MALLOC(sizeof(long int), COALESCE); // size 64 bits
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 3) { // TODO do we need this?
     	// check for 128 bits
-        int* val = (int*) MALLOC(16);
+        int* val = (int*) MALLOC(16, COALESCE);
     	assert(((long) val) % 16 == 0);
         *val = id;
         resulting_ids[id] = *val;
@@ -62,13 +64,13 @@ __global__ void test_different_types(int *resulting_ids) {
     } else if (choice == 456) { // TODO normal malloc wouldn't even pass this. why?
         // check that alignment correct for max_align_t
         int max_size = sizeof(max_align_t);
-        int* val = (int*) MALLOC(max_size);
+        int* val = (int*) MALLOC(max_size, COALESCE);
     	assert(((long) val) % max_size == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else {
-        int* val = (int*) MALLOC(sizeof(int));
+        int* val = (int*) MALLOC(sizeof(int), COALESCE);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
@@ -83,13 +85,13 @@ __global__ void test_pass_ptrs(int *resulting_ids) {
     __shared__ int** ptrs;
     // let thread 0 in block allocate array for entire block
     if (threadIdx.x == 0) {
-        ptrs = (int**) MALLOC(sizeof(int*) * blockDim.x);
+        ptrs = (int**) MALLOC(sizeof(int*) * blockDim.x, COALESCE);
     } 
     __syncthreads();
 
     // malloc int and share pointer
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    int* val = (int*) MALLOC(sizeof(int));
+    int* val = (int*) MALLOC(sizeof(int), COALESCE);
     assert(val != NULL);
     ptrs[threadIdx.x] = val;
     __syncthreads();
