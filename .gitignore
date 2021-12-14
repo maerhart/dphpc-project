@@ -4,3 +4,7 @@ build/
 tags
 llvm/
 .cache/
+mpi_malloc_benchmarks/*.cu
+mpi_malloc_benchmarks/.ipynb_checkpoints/
+examples/**/*.cu
+dynamic_allocator/.ipynb_checkpoints/
