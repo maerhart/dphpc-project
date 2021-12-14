@@ -2,6 +2,7 @@
 #include <iostream>
 #include <utility>
 
+#include "warp_malloc.cuh"
 
 __device__ const int WARP_SIZE = 32;
 __device__ const size_t MAX_HEADER_PAD = sizeof(max_align_t) - 1;

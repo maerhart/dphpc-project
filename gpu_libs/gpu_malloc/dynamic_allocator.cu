@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include "cooperative_groups.h"
 
+#include "dynamic_allocator.cuh"
+
 // baseline using std malloc/free
 __device__ void* malloc_baseline(size_t size) {
     void* ptr = malloc(size);

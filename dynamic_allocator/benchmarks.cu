@@ -1,7 +1,7 @@
 #include <iostream>
 #include <cuda_profiler_api.h>
-#include "dynamic_allocator.cu"
-#include "warp_malloc.cu"
+#include "../gpu_libs/gpu_malloc/dynamic_allocator.cu"
+#include "../gpu_libs/gpu_malloc/warp_malloc.cu"
 #include "benchmarks_separate.cu"
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
