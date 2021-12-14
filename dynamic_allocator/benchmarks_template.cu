@@ -23,13 +23,14 @@ __device__ void sum_reduce(int n, float* ptr) {
 	ptr[0] = res;
 }
 
-// calc product and store result in first array entry
-__device__ void prod_reduce(int n, float* ptr) {
+// calc dot product and store result in last array entry,
+// ignores last element if odd number of floats
+__device__ void dot_product(int n, float* ptr) {
     float res = 0;
-    for (int i = 0; i < n; ++i) {
-        res *= ptr[i];
+    for (int i = 0; i < n/2; ++i) {
+        res += ptr[i]*ptr[2*i];
     }
-    ptr[0] = res;
+    ptr[n - 1] = res;
 }
 
 // calc max and store result in first array entry
