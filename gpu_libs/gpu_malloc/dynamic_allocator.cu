@@ -6,7 +6,7 @@
 #include "dynamic_allocator.cuh"
 
 // baseline using std malloc/free
-__device__ void* malloc_baseline(size_t size) {
+__device__ void* malloc_baseline(size_t size, bool coalesced) {
     void* ptr = malloc(size);
     #ifndef NDEBUG
     if (!ptr) {
@@ -29,7 +29,11 @@ struct s_header {
 
 // memory layout of a superblock
 // s_header, blocksize x [pointer to s_header, data]
-__device__ void* malloc_v1(size_t size) {
+__shared__ bool v1_coalesced;
+__device__ void* malloc_v1(size_t size, bool coalesced) {
+    v1_coalesced = coalesced;
+    if (!coalesced) return malloc(size);
+    
 	__shared__ void* superblock;
 	if (threadIdx.x == 0) {
 		// allocate new superblock
@@ -60,6 +64,11 @@ __device__ void* malloc_v1(size_t size) {
 }
 
 __device__ void free_v1(void* memptr) {
+    if (!v1_coalesced) {
+        free(memptr);
+        return;
+    }
+    
     __syncthreads();
     if (threadIdx.x == 0) {
      free(memptr);
@@ -239,7 +248,8 @@ __device__ void clean_malloc_v3() {
     }
     block.sync();
 }
-__device__ void* malloc_v3(size_t size) {
+__device__ void* malloc_v3(size_t size, bool coalesced) {
+    
     if (!threadIdx.x) {
 	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
         *mem_v3 = malloc(size * blockDim.x + sizeof(int));
@@ -275,6 +285,7 @@ __device__ void* malloc_v3(size_t size) {
 }
 
 __device__ void free_v3(void *memptr) {
+    
     KeyValue kv = {
         .key = memptr,
         .value = empty

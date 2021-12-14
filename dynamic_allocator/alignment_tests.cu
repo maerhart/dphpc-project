@@ -3,12 +3,14 @@
 #include "../gpu_libs/gpu_malloc/warp_malloc.cu"
 #include "../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
+#define COALESCE true
+
 #define VERBOSE true
 #define SIZE 37*sizeof(float)
 
 __global__ void baseline(uintptr_t *malloc_locations) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    void* ptr = (void*) malloc_baseline(SIZE);
+    void* ptr = (void*) malloc_baseline(SIZE, COALESCE);
     malloc_locations[id] = (uintptr_t)ptr;
     
     if (VERBOSE) {
@@ -21,7 +23,7 @@ __global__ void baseline(uintptr_t *malloc_locations) {
 
 __global__ void v1_flo(uintptr_t *malloc_locations) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    void* ptr = (void*) malloc_v1(SIZE);
+    void* ptr = (void*) malloc_v1(SIZE, COALESCE);
     malloc_locations[id] = (uintptr_t)ptr;
     
     //free_v1(ptr);
@@ -29,7 +31,7 @@ __global__ void v1_flo(uintptr_t *malloc_locations) {
 
 __global__ void v1_martin(uintptr_t *malloc_locations) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    void* ptr = (void*) dyn_malloc(SIZE, true);
+    void* ptr = (void*) dyn_malloc(SIZE, COALESCE);
     malloc_locations[id] = (uintptr_t)ptr;
     
     dyn_free(ptr);
@@ -38,7 +40,7 @@ __global__ void v1_martin(uintptr_t *malloc_locations) {
 __global__ void v3_nils(uintptr_t *malloc_locations) {
     init_malloc_v3();
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    void* ptr = (void*) malloc_v3(SIZE);
+    void* ptr = (void*) malloc_v3(SIZE, COALESCE);
     malloc_locations[id] = (uintptr_t)ptr;
     
     free_v3(ptr);
@@ -47,7 +49,7 @@ __global__ void v3_nils(uintptr_t *malloc_locations) {
 */
 __global__ void v4_warp_anton(uintptr_t *malloc_locations) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
-    void* ptr = (void*) malloc_v4(SIZE);
+    void* ptr = (void*) malloc_v4(SIZE, COALESCE);
     malloc_locations[id] = (uintptr_t)ptr;
     
     free_v4(ptr);
