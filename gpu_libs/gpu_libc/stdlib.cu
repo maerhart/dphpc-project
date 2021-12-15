@@ -4,6 +4,8 @@
 #include "assert.cuh"
 #include "cuda_mpi.cuh"
 #include "dyn_malloc.cuh"
+#include "warp_malloc.cuh"
+#include "dynamic_allocator.cuh"
 
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
@@ -110,6 +112,126 @@ __device__ void __gpu_free_coalesce(void *memptr) {
     dyn_free(memptr);
 }
 
-__device__ void __gpu_init_malloc() {}
+__device__ void* __gpu_malloc_v1(size_t size, bool coalesced) {   
+    void* ptr = malloc_v1(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
 
-__device__ void __gpu_clean_malloc() {}
+__device__ void* __gpu_calloc_v1(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v1(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v1(void *memptr) {
+    free_v1(memptr);
+}
+
+__device__ void* __gpu_malloc_v2(size_t size, bool coalesced) {   
+    void* ptr = malloc_v2(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
+
+__device__ void* __gpu_calloc_v2(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v2(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v2(void *memptr) {
+    free_v2(memptr);
+}
+
+__device__ void* __gpu_malloc_v3(size_t size, bool coalesced) {   
+    void* ptr = malloc_v3(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
+
+__device__ void* __gpu_calloc_v3(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v3(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v3(void *memptr) {
+    free_v3(memptr);
+}
+
+__device__ void __gpu_init_malloc() {
+    init_malloc_v3();
+}
+
+__device__ void __gpu_clean_malloc() {
+    clean_malloc_v3();
+}
+
+
+__device__ void* __gpu_malloc_v4(size_t size, bool coalesced) {   
+    void* ptr = malloc_v4(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
+
+__device__ void* __gpu_calloc_v4(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v4(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v4(void *memptr) {
+    free_v4(memptr);
+}
+
+__device__ void* __gpu_malloc_v5(size_t size, bool coalesced) {   
+    void* ptr = malloc_v5(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
+
+__device__ void* __gpu_calloc_v5(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v5(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v5(void *memptr) {
+    free_v5(memptr);
+}

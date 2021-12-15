@@ -10,6 +10,7 @@
 #include "llvm/Support/FileSystem.h"
 #include <clang/AST/Decl.h>
 #include <clang/Basic/SourceLocation.h>
+#include <cstdio>
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -29,11 +30,11 @@ static cl::opt<bool> WriteToSTDOUT(
     cl::init(false),
     cl::cat(ConverterCategory));
 
-static cl::opt<bool> CoalesceMalloc(
-    "coalesce_malloc",
+static cl::opt<unsigned> MallocVersion(
+    "malloc_version",
     cl::desc(
         "enables coalescing of malloc calls"),
-    cl::init(false),
+    cl::init(0),
     cl::cat(ConverterCategory));
 
 const char* GPU_MPI_PROJECT = "GPU_MPI_PROJECT";
@@ -252,8 +253,9 @@ public:
         mMatcher.addMatcher(declRefExpr(to(namedDecl(hasName("class")))).bind("refClassTokenDecl"), &mFuncConverter);
         mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
 
-        if (CoalesceMalloc) {
-            mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit())).bind("mainFunc"), &mFuncConverter);
+        if (MallocVersion.getValue() > 0) {
+            if (MallocVersion.getValue() == 3)
+                mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit())).bind("mainFunc"), &mFuncConverter);
 
             mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit()),
                 forEachDescendant(callExpr(
@@ -337,8 +339,10 @@ public:
             SourceLocation fileStart = mRewriter.getSourceMgr().translateFileLineCol(fileEntry, /*line*/1, /*column*/1);
             mRewriter.InsertTextBefore(fileStart, "#include \"global_vars.cuh\"\n"); // this header required to make __gpu_global function available in user code
 
-            if (CoalesceMalloc) {
-                mRewriter.InsertTextBefore(fileStart, "#define GPUMPI_MALLOC_COALESCE\n");
+            if (MallocVersion.getValue() > 0) {
+                char *tmp = (char*) malloc(30*sizeof(char));
+                sprintf(tmp, "#define GPUMPI_MALLOC_V%u\n", MallocVersion.getValue());
+                mRewriter.InsertTextBefore(fileStart, tmp);
             }
 
             llvm::errs() << "Trying to write " << fileName << " : " << fileEntry->tryGetRealPathName() << "\n";

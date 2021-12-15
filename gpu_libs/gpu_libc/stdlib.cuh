@@ -31,19 +31,33 @@ __device__ double __gpu_strtod(const char *nptr, char **endptr);
 __device__ int __gpu_posix_memalign(void **memptr, size_t alignment, size_t size);
 
 __device__ void* __gpu_malloc(size_t size);
-
 __device__ void* __gpu_calloc(size_t nmemb, size_t size);
-
 __device__ void __gpu_free(void *memptr);
 
 __device__ void* __gpu_malloc_coalesce(size_t size, bool coalesced=false);
-
 __device__ void* __gpu_calloc_coalesce(size_t nmemb, size_t size, bool coalesced=false);
-
 __device__ void __gpu_free_coalesce(void *memptr);
 
-__device__ void __gpu_init_malloc();
+__device__ void* __gpu_malloc_v1(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v1(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v1(void* memptr);
 
+__device__ void* __gpu_malloc_v2(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v2(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v2(void* memptr);
+
+__device__ void __gpu_init_malloc();
 __device__ void __gpu_clean_malloc();
+__device__ void* __gpu_malloc_v3(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v3(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v3(void *memptr);
+
+__device__ void* __gpu_malloc_v4(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v4(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v4(void* memptr);
+
+__device__ void* __gpu_malloc_v5(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v5(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v5(void* memptr);
 
 #endif
