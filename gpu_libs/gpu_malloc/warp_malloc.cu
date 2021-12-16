@@ -128,15 +128,13 @@ __device__ void write_header(void* payload_start_ptr, bool is_superblock, bool i
    T* header_ptr = ((T*) payload_start_ptr) - 1;
    size_t space_prev_payload = ((char*) header_ptr) - ((char*) prev_payload_start_ptr);  // includes padding
 
-   T header = (T) space_prev_payload;
-
-   assert(header == space_prev_payload);
+   T header = ((T) space_prev_payload) << 3;
 
    // write superblock bit
-   header = header | (((T) is_superblock) << (8 * sizeof(T) - 1));
+   header = header | ((T) is_superblock);
 
    // write lastblock bit
-   header = header | (((T) is_lastblock) << (8 * sizeof(T) - 3));
+   header = header | (((T) is_lastblock) << 2);
 
    *header_ptr = header;
 }
@@ -146,8 +144,10 @@ __device__ void write_header(void* payload_start_ptr, bool is_superblock, bool i
  *  Warp level malloc with variable alignemnt and variable header size
 
  *  Each block has a header 
- *  where the first three  bits are is_superblock, is_free, and is_last_block
+ *  where the first three LSB bits are is_superblock, is_free, and is_last_block (shift 0, 1, 2)
  *  and the remaining bits denote the size of the previous block
+ *
+ *  requires little endian architecture
  *
  * 
  *  block 8-aligned <=> Header 8 byte
@@ -188,7 +188,7 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
         // check if result valid. if not both threads are active and participating
         // in shuffle, then result is undefined
         if (is_active(my_lane_id - i, active_mask)) {
-            size_t min_header_size; size_t alignment;
+            size_t min_header_size, alignment;
             compute_min_header_size_alignment(size_i_below, offset_prev_payload_end - offset_prev_payload_start, min_header_size, alignment);
             offset_prev_payload_start = header_end_offset(offset_prev_payload_end, min_header_size, alignment);
             offset_prev_payload_end = offset_prev_payload_start + size;
@@ -197,7 +197,7 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
     // arrived at own block, offset vars contain block of lane before
 
     // compute minimum header size and payload alignment for this block
-    size_t min_header_size; size_t alignment;
+    size_t min_header_size, alignment;
     compute_min_header_size_alignment(size, offset_prev_payload_end - offset_prev_payload_start, min_header_size, alignment);
     size_t offset_payload_start = header_end_offset(offset_prev_payload_end, min_header_size, alignment);
 
@@ -250,7 +250,7 @@ __device__ min_h_t* read_header_templ(char* payload_start_ptr, size_t& size_resu
     T* header_ptr = ((T*) payload_start_ptr) - 1;
 
     // read size
-    size_result = (size_t) (*header_ptr & ~(((T) 7) << (8 * sizeof(T) - 3)));
+    size_result = ((size_t) (*header_ptr)) >> 3;
  
     return (min_h_t*) header_ptr;
 }
@@ -283,9 +283,9 @@ __device__ min_h_t* read_header(char* payload_start_ptr, size_t& size_result) {
  */
 __device__ void free_v5(void* memptr) {
 
-    min_h_t superblock_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 1);
-    min_h_t free_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 2);
-    min_h_t lastblock_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 3);
+    min_h_t superblock_bit_mask = ((min_h_t) 1);
+    min_h_t free_bit_mask = ((min_h_t) 2);
+    min_h_t lastblock_bit_mask = ((min_h_t) 4);
 
     char* payload_start_ptr = (char*) memptr;
     size_t size_prev_block;
