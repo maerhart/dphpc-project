@@ -109,6 +109,73 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     runtime_free[id] = end_free - start_free;
 }
 
+// cache testing start
+
+__global__ void v1_flo_per_warp_no_headers(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v1_per_warp_no_headers(num_floats * sizeof(float), COALESCE);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v1_per_warp_no_headers(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+__global__ void v1_flo_per_block_no_headers(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v1_per_block_no_headers(num_floats * sizeof(float), COALESCE);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v1_per_block_no_headers(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+__global__ void v1_flo_per_block_no_headers_warp_align(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v1_per_block_no_headers_warp_align(num_floats * sizeof(float), COALESCE);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v1_per_block_no_headers_warp_align(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+// cache testing end
+
 __global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
