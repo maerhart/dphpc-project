@@ -220,6 +220,10 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
     // need to cast as pointers can't be shuffled
     malloced_ptr = (char*) __shfl_sync(active_mask, (size_t) malloced_ptr, elected_lane);
 
+    if (malloced_ptr == NULL) {
+        return NULL;
+    }
+
     void* payload_start_ptr = malloced_ptr + offset_payload_start;
     void* prev_payload_start_ptr = malloced_ptr + offset_prev_payload_start;
 
@@ -242,12 +246,13 @@ typedef unsigned int min_h_t; // uint32_t header are the smallest headers we can
 
 template<typename T>
 __device__ min_h_t* read_header_templ(char* payload_start_ptr, size_t& size_result) {
-   T* header_ptr = ((T*) payload_start_ptr) - 1;
 
-   // read size
-   size_result = (size_t) (*header_ptr & ~(((T) 7) << (8 * sizeof(T) - 3)));
+    T* header_ptr = ((T*) payload_start_ptr) - 1;
 
-   return (min_h_t*) header_ptr;
+    // read size
+    size_result = (size_t) (*header_ptr & ~(((T) 7) << (8 * sizeof(T) - 3)));
+ 
+    return (min_h_t*) header_ptr;
 }
 
 
@@ -278,9 +283,9 @@ __device__ min_h_t* read_header(char* payload_start_ptr, size_t& size_result) {
  */
 __device__ void free_v5(void* memptr) {
 
-    min_h_t superblock_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 1;
-    min_h_t free_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 2;
-    min_h_t lastblock_bit_mask = ((min_h_t) 1) << sizeof(min_h_t) - 3;
+    min_h_t superblock_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 1);
+    min_h_t free_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 2);
+    min_h_t lastblock_bit_mask = ((min_h_t) 1) << (8 * sizeof(min_h_t) - 3);
 
     char* payload_start_ptr = (char*) memptr;
     size_t size_prev_block;
@@ -308,7 +313,7 @@ __device__ void free_v5(void* memptr) {
             }
             // look at block before
             payload_start_ptr  = (((char*) header_start) - size_prev_block);
-            min_h_t* header_start = read_header(payload_start_ptr, size_prev_block);
+            header_start = read_header(payload_start_ptr, size_prev_block);
             header_bits = *header_start;
         } while (header_bits & free_bit_mask);
 
