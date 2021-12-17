@@ -1,6 +1,6 @@
 #include <iostream>
-#include "dynamic_allocator.cu"
-#include "warp_malloc.cu"
+#include "../../gpu_libs/gpu_malloc/dynamic_allocator.cu"
+#include "../../gpu_libs/gpu_malloc/warp_malloc.cu"
 #include "benchmarks_separate.cu"
 #include "../../gpu_libs/gpu_malloc/dyn_malloc.cu"
 
@@ -10,17 +10,17 @@
 // *** Workloads ***
 
 // initialize the malloced space with n incrementing floats
-__device__ void init_inc(int n, float* ptr) {
+__device__ void init_inc(int n, float* ptr, int stride = 1) {
 	for (int i = 0; i < n; ++i) {
-		ptr[i] = i;
+		ptr[i*stride] = i;
 	}
 }
 
 // calc sum and store result in first array entry
-__device__ void sum_reduce(int n, float* ptr) {
+__device__ void sum_reduce(int n, float* ptr, int stride = 1) {
 	float res = 0;
 	for (int i = 0; i < n; ++i) {
-        res += ptr[i];
+        res += ptr[i*stride];
     }
 	ptr[0] = res;
 }
@@ -118,10 +118,10 @@ __global__ void v1_martin(int num_floats, clock_t* runtime_malloc, clock_t* runt
     clock_t end_malloc = clock64();
     runtime_malloc[id] = end_malloc - start_malloc;
     
-	 init_inc(num_floats, ptr);
+	 init_inc(num_floats, ptr, 32);
     
     clock_t start_work = clock64();
-	${WORKLOAD}(num_floats, ptr);
+	${WORKLOAD}(num_floats, ptr, 32);
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
