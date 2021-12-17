@@ -5,8 +5,8 @@
 
 #define COALESCE true
 
-#define MALLOC malloc_v1_per_warp_no_headers
-#define FREE free_v1_per_warp_no_headers
+#define MALLOC malloc_v1_per_block_no_headers_warp_align
+#define FREE free_v1_per_block_no_headers_warp_align
 
 // allocate one int per thread and set to threadId
 __global__ void test(int *resulting_ids) {

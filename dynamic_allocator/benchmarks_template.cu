@@ -65,7 +65,7 @@ __device__ void sum_all_prod(int n, float* ptr) {
 
 
 // measure 3 individual times for malloc/free and workload
-__global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void baseline(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free, int factor) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
@@ -170,6 +170,49 @@ __global__ void v1_flo_per_block_no_headers_warp_align(int num_floats, clock_t* 
     
     clock_t start_free = clock64();
     free_v1_per_block_no_headers_warp_align(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+__global__ void v1_flo_per_block_no_headers_warp_align_dist(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v1_per_block_no_headers_warp_align_dist(num_floats * sizeof(float), COALESCE);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v1_per_block_no_headers_warp_align_dist(ptr);
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+
+__global__ void v1_flo_per_block_no_headers_warp_align_80(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free, int factor) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    float* ptr = (float*)malloc_v1_per_block_no_headers_warp_align_80(num_floats * sizeof(float), COALESCE, factor);
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v1_per_block_no_headers_warp_align_80(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
 }
@@ -281,6 +324,8 @@ int main(int argc, char **argv) {
 	int num_runs = atoi(argv[3]);
 	int num_warmup = atoi(argv[4]);
 	int num_floats = atoi(argv[5]);
+    // temporary
+    int factor = atoi(argv[6]);
 
     // setup of individual measurement arrays
     double mean_runtimes_malloc[num_runs];
@@ -292,11 +337,18 @@ int main(int argc, char **argv) {
 
     cudaDeviceSetLimit(cudaLimitMallocHeapSize, 1000000000); // 1GB
     
-    run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block, [num_floats](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
-        ${VERSION}<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free);
+    run_benchmark_separate(num_runs, num_warmup, mean_runtimes_malloc, mean_runtimes_work, mean_runtimes_free, max_runtimes_malloc, max_runtimes_work, max_runtimes_free, blocks, threads_per_block, [num_floats, factor](clock_t* runtimes_malloc, clock_t* runtimes_work, clock_t* runtimes_free, int b, int t) -> void {
+        ${VERSION}<<<b, t>>>(num_floats, runtimes_malloc, runtimes_work, runtimes_free, factor);
     });
     for(int i = 0; i < num_runs; i++) {
 	std::cout << mean_runtimes_malloc[i] << " " << max_runtimes_malloc[i] << " " << mean_runtimes_free[i] << " " << max_runtimes_free[i] << " " << mean_runtimes_work[i] << " " << max_runtimes_work[i] << std::endl;
+    }
+    
+    // check for error
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+       std::cout << "CUDA ERROR: " << cudaGetErrorString(err) << std::endl;
+       exit(-1);
     }
     return 0;
 }

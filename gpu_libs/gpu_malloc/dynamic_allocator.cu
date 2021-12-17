@@ -164,6 +164,7 @@ __device__ void* malloc_v1_per_block_no_headers_warp_align(size_t size, bool coa
     int warp_index = threadIdx.x / 32;
     int warp_offset = warp_index * size_per_warp;
     int warp_alignment_offset = 128 - (uintptr_t)((char*)superblock + warp_offset) % 128;
+    //printf("warp_alignment_offset: %d\n", warp_alignment_offset);
     int warp_aligned = warp_offset + warp_alignment_offset;
     
 	// ptr to individual memory offset
@@ -171,6 +172,82 @@ __device__ void* malloc_v1_per_block_no_headers_warp_align(size_t size, bool coa
     return ptr;
 }
 __device__ void free_v1_per_block_no_headers_warp_align(void* memptr) {
+    return;
+}
+
+
+// block-level sync, contiguous data (no header), no free
+// alignment of warps' data section to 128-bytes (seperate cache lines for different warps)
+// greater distance between warps
+__device__ void* malloc_v1_per_block_no_headers_warp_align_dist(size_t size, bool coalesced) {
+    // ignore coalesced for now, assume is true
+    int warp_min_spacing = 0;
+    
+    
+    int warps_per_block = blockDim.x / 32;
+    int size_per_warp = 32 * size + 128 + warp_min_spacing;
+    
+	__shared__ void* superblock;
+	if (threadIdx.x == 0) {
+		// allocate new superblock
+        int size_superblock = warps_per_block * size_per_warp;
+		superblock = malloc(size_superblock);
+		if (superblock == NULL) {
+			printf("V1: failed to allocate %llu bytes on device\n", (long long unsigned)(size_superblock));
+			return NULL;
+		}
+	}
+	__syncthreads();
+
+	if (superblock == NULL) return NULL;
+
+    int warp_index = threadIdx.x / 32;
+    int warp_offset = warp_index * size_per_warp;
+    int warp_alignment_offset = 128 - (uintptr_t)((char*)superblock + warp_offset) % 128;
+    int warp_aligned = warp_offset + warp_alignment_offset;
+    
+	// ptr to individual memory offset
+    void* ptr = (void*)((char*)superblock + warp_aligned + (threadIdx.x % 32) * size);
+    return ptr;
+}
+__device__ void free_v1_per_block_no_headers_warp_align_dist(void* memptr) {
+    return;
+}
+
+
+// block-level sync, contiguous data (no header), no free
+// alignment of warps' data section to 128-bytes (seperate cache lines for different warps)
+// greater distance between warps
+__device__ void* malloc_v1_per_block_no_headers_warp_align_80(size_t size, bool coalesced, int factor) {
+    // ignore coalesced for now, assume is true
+
+    int padding_to_80 = (80 - (16 + 32*size) % 80) % 80;
+    //printf("padding: %d\n", padding_to_80);
+    int warps_per_block = blockDim.x / 32;
+    int size_per_warp = 16 + 32 * size + padding_to_80 + 80 * factor;
+    
+	__shared__ void* superblock;
+	if (threadIdx.x == 0) {
+		// allocate new superblock
+        int size_superblock = warps_per_block * size_per_warp;
+		superblock = malloc(size_superblock);
+		if (superblock == NULL) {
+			printf("V1: failed to allocate %llu bytes on device\n", (long long unsigned)(size_superblock));
+			return NULL;
+		}
+	}
+	__syncthreads();
+
+	if (superblock == NULL) return NULL;
+
+    int warp_index = threadIdx.x / 32;
+    int warp_offset = warp_index * size_per_warp;
+    
+	// ptr to individual memory offset
+    void* ptr = (void*)((char*)superblock + warp_offset + 16 + (threadIdx.x % 32) * size);
+    return ptr;
+}
+__device__ void free_v1_per_block_no_headers_warp_align_80(void* memptr) {
     return;
 }
 
