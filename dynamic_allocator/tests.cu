@@ -5,8 +5,8 @@
 
 #define COALESCE true
 
-#define MALLOC malloc_v5
-#define FREE free_v5
+#define MALLOC dyn_malloc
+#define FREE dyn_free
 
 // allocate one int per thread and set to threadId
 __global__ void test(int *resulting_ids) {
@@ -188,8 +188,8 @@ void run_test(const std::string& name, int blocks, int threads_per_block, void(*
 
 int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
-    int blocks = 100;
-    int threads_per_block = 128;
+    int blocks = 12;
+    int threads_per_block = 1024;
     run_test("basic          ", blocks, threads_per_block, test);
     run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("different types", blocks, threads_per_block, test_different_types);
