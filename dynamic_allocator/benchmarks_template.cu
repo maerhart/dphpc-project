@@ -128,7 +128,30 @@ __global__ void v2_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void v3_anton(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    
+    clock_t start_malloc = clock64();
+    init_malloc_v3();
+    float* ptr = (float*)malloc_v6(num_floats * sizeof(float));
+    clock_t end_malloc = clock64();
+    runtime_malloc[id] = end_malloc - start_malloc;
+    
+	init_inc(num_floats, ptr);
+    
+    clock_t start_work = clock64();
+	${WORKLOAD}(num_floats, ptr);
+    clock_t end_work = clock64();
+    runtime_work[id] = end_work - start_work;
+    
+    clock_t start_free = clock64();
+    free_v6(ptr);
+    clean_malloc_v3();
+    clock_t end_free = clock64();
+    runtime_free[id] = end_free - start_free;
+}
+
+__global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
 
     clock_t start_malloc = clock64();
