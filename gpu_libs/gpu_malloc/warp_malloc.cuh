@@ -22,7 +22,7 @@ __device__ void* malloc_v5(size_t size, bool coalesced = false);
  *	- find block that is not freed -> set to be last block
  *	- find superblock (that is free) -> call free
  */
-__device__ void free_v5(void* memptr);
+__device__ bool free_v5(void* memptr);
 
 /**
  * Safe warp level malloc

@@ -33,6 +33,13 @@ void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_
 
                 cudaDeviceSynchronize();
 
+                // check for error
+                cudaError_t err = cudaGetLastError();
+                if (err != cudaSuccess) {
+                   std::cout << "CUDA ERROR: " << cudaGetErrorString(err) << std::endl;
+                   exit(-1);
+                }
+
                 
                 if (i >= num_warmup) {
                         // retrieve results
@@ -63,6 +70,8 @@ void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_
                                 max_work = std::max(max_work, (double)runtimes_host_work[j]);
                                 max_free = std::max(max_free, (double)runtimes_host_free[j]);
                         }
+                        std::cout << "EXPECTED FREES: " << total_threads / 32 << " GOT: " << sum_malloc << std::endl;
+                        assert(sum_malloc == total_threads / 32 || sum_malloc < 0);
                         mean_runtimes_malloc[run_id] = sum_malloc / total_threads;
                         mean_runtimes_work[run_id] = sum_work / total_threads;
                         mean_runtimes_free[run_id] = sum_free / total_threads;

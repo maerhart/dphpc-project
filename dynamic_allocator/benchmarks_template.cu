@@ -181,22 +181,33 @@ __global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runti
     
     clock_t start_malloc = clock64();
     float* ptr = (float*)malloc_v5(num_floats * sizeof(float), COALESCE);
+    //assert(ptr != NULL);
     //if (ptr == NULL) printf("allocation Error");
     //printf("ptr_1, block %i: %p\n", blockIdx.x, ptr);
     clock_t end_malloc = clock64();
+
+    if (ptr != NULL) {
     runtime_malloc[id] = end_malloc - start_malloc;
     
 	init_inc(num_floats, ptr);
+    }
     
     clock_t start_work = clock64();
+    if (ptr != NULL) {
 	${WORKLOAD}(num_floats, ptr);
+    }
     clock_t end_work = clock64();
     runtime_work[id] = end_work - start_work;
     
+    if (ptr != NULL) {
     clock_t start_free = clock64();
-    free_v5(ptr);
+    bool did_free = free_v5(ptr);
     clock_t end_free = clock64();
     runtime_free[id] = end_free - start_free;
+    runtime_malloc[id] = (clock_t) did_free;
+    } else {
+        runtime_malloc[id] = -15000;
+    }
 }
 
 void print_arr(double* arr, int len) {

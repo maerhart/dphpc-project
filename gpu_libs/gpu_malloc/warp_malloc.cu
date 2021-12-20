@@ -161,6 +161,7 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
     assert(sizeof(size_t) == 8);
     // check that size < max size which is 2 ^ (64 - 3) - 1 as need to fit size in header together with extra bits
     if (size & (((size_t) 7) << 61) || size < 1) {
+        assert("GOT ILLEGAL SIZE" && false);
         return NULL;
     }
 
@@ -214,6 +215,10 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
     // perform coalesced malloc
     if (is_elected) {
         malloced_ptr = (char*) malloc(total_superblock_length);
+        printf("\ttotal supblock length %ld\n", total_superblock_length);
+        if (my_lane_id % 32 != 0) {
+            printf("GOT MALLOC FROM lane %d\n", my_lane_id);
+        }
     }
     // broadcast alloced ptr to all lanes
     assert(sizeof(size_t) == sizeof(char*)); // make sure we don't change due to cast
@@ -221,6 +226,7 @@ __device__ void* malloc_v5(size_t size, bool coalesced) {
     malloced_ptr = (char*) __shfl_sync(active_mask, (size_t) malloced_ptr, elected_lane);
 
     if (malloced_ptr == NULL) {
+        //assert("STD MALLOC DID NOT ALLOCATE" && false);
         return NULL;
     }
 
@@ -281,7 +287,7 @@ __device__ min_h_t* read_header(char* payload_start_ptr, size_t& size_result) {
  *	- find block that is not freed -> set to be last block
  *	- find superblock (that is free) -> call free
  */
-__device__ void free_v5(void* memptr) {
+__device__ bool free_v5(void* memptr) {
 
     min_h_t superblock_bit_mask = ((min_h_t) 1);
     min_h_t free_bit_mask = ((min_h_t) 2);
@@ -296,7 +302,7 @@ __device__ void free_v5(void* memptr) {
 
     if (!(*header_start & lastblock_bit_mask)) {
         // block is not last block -> done (only last block does work
-        return;
+        return false;
     }
 
     // from here on, we know that we have the last block
@@ -309,7 +315,7 @@ __device__ void free_v5(void* memptr) {
             if (header_bits & superblock_bit_mask) {
                 // if we reach the superblock and it's free we're done
                 free(header_start);
-                return;
+                return true;
             }
             // look at block before
             payload_start_ptr  = (((char*) header_start) - size_prev_block);
@@ -324,6 +330,7 @@ __device__ void free_v5(void* memptr) {
     // will continue walking through the free blocks
 
     // once we exit this loop we succeeded in setting an earlier unfreed block to be the last block -> we're done
+    return false;
 }
 
 /**
