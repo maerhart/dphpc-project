@@ -140,6 +140,9 @@ __device__ void free_v3(void *memptr) {
     };
 
     lookup(table, &kv);
+    if(kv.value == empty) {
+        return false;
+    }
     int *counter_ptr = (int *) kv.value;
     int counter = atomicSub(counter_ptr, 1);
     remove(table, &kv);
@@ -147,6 +150,7 @@ __device__ void free_v3(void *memptr) {
     if (counter == 1) {
         free(counter_ptr);
     }
+    return true;
 }
 
 __device__ void* malloc_v6(size_t size) {
@@ -186,13 +190,16 @@ __device__ void* malloc_v6(size_t size) {
     }
 }
 
-__device__ void free_v6(void *memptr) {
+__device__ bool free_v6(void *memptr) {
     KeyValue kv = {
         .key = memptr,
         .value = empty
     };
 
     lookup(table, &kv);
+    if(kv.value == empty) {
+        return false;
+    }
     int *counter_ptr = (int *) kv.value;
     int counter = atomicSub(counter_ptr, 1);
     remove(table, &kv);
@@ -200,4 +207,5 @@ __device__ void free_v6(void *memptr) {
     if (counter == 1) {
         free(counter_ptr);
     }
+    return true;
 }
