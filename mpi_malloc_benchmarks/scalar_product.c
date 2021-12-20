@@ -31,13 +31,18 @@ int main(int argc, char *argv[]) {
   double *local_y = (double *) malloc(n_elems * sizeof(double));
   t_malloc = MPI_Wtime() - start;
 
+  for(i = 0; i < n_elems; i++) {
+    local_x[i] = 0.01 * i;
+    local_y[i] = 0.03 * i;
+  }
+
+  double local_prod;
+  // Warmup
+  for (int j = 0; j < 3; ++j) {
+    local_prod = dotProduct(local_x,local_y,n_elems);
+  }
   start = MPI_Wtime();
   for (int j = 0; j < 500000; ++j) {
-    for(i = 0; i < n_elems; i++) {
-      local_x[i] = 0.01 * i;
-      local_y[i] = 0.03 * i;
-    }
-    double local_prod;
     local_prod = dotProduct(local_x,local_y,n_elems);
   }
   t_work = MPI_Wtime() - start;
@@ -48,17 +53,19 @@ int main(int argc, char *argv[]) {
   free(local_y);
   t_free = MPI_Wtime() - start;
 
-  double malloc_sum, work_sum, free_sum;
-  MPI_Reduce(&t_malloc, &malloc_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&t_work, &work_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&t_free, &free_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-
-  if (my_rank == 0) {
-    // printf("dotProduct = %f\n", prod);
-    printf("%f\n", malloc_sum/num_procs);
-    printf("%f\n", work_sum/num_procs);
-    printf("%f\n", free_sum/num_procs);
-  } 
+  if (my_rank == 0) printf("malloc ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_malloc);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n work ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_work);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n free ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_free);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n");
 
   MPI_Finalize();
 

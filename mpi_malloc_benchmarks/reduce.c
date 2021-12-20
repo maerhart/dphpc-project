@@ -3,15 +3,6 @@
 #include <stdlib.h>
 #include <assert.h>
 
-double dotProduct(double *x, double *y, int n) {
-  int i;
-  double prod = 0.0;
-  for (i = 0; i < n; i++) {
-    prod += x[i]*y[i];
-  }
-  return prod;
-}
-
 int main(int argc, char *argv[]) {
   int i;
   double prod_x, prod_y;
@@ -30,14 +21,18 @@ int main(int argc, char *argv[]) {
   // measure malloc time
   start = MPI_Wtime();
   double *local_x = (double *) malloc(n_elems * sizeof(double));
-  double *local_y = (double *) malloc(n_elems * sizeof(double));
   t_malloc = MPI_Wtime() - start;
+
+  double *local_y;
+  if (my_rank == 0) local_y = (double *) malloc(n_elems * sizeof(double));
 
   // init memory
   for(i = 0; i < n_elems; i++) {
     local_x[i] = i;
   }
 
+  // Warmup
+  MPI_Reduce(local_x, local_y, n_elems, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
   // measure work to evaluate memory access time
   start = MPI_Wtime();
   MPI_Reduce(local_x, local_y, n_elems, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -49,6 +44,7 @@ int main(int argc, char *argv[]) {
       assert(local_y[i] == i*num_procs);
       if (local_y[i] != i*num_procs) {
         printf("Expected %f, but got %f\n", local_y[i], (double)i*num_procs);
+        fflush(stdout);
       }
     }
   }
@@ -56,20 +52,23 @@ int main(int argc, char *argv[]) {
   // measure free time
   start = MPI_Wtime();
   free(local_x);
-  free(local_y);
   t_free = MPI_Wtime() - start;
 
-  // Calculate the average of the time measurements of all threads
-  double malloc_sum, work_sum, free_sum;
-  MPI_Reduce(&t_malloc, &malloc_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&t_work, &work_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  MPI_Reduce(&t_free, &free_sum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+  if (my_rank == 0) free(local_y);
 
-  if (my_rank == 0) {
-    printf("%f\n", malloc_sum/num_procs);
-    printf("%f\n", work_sum/num_procs);
-    printf("%f\n", free_sum/num_procs);
-  } 
+  if (my_rank == 0) printf("malloc ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_malloc);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n work ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_work);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n free ");
+  MPI_Barrier(MPI_COMM_WORLD);
+  printf("%f ", t_free);
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (my_rank == 0) printf("\n");
 
   MPI_Finalize();
 

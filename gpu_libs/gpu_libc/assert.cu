@@ -57,16 +57,16 @@ __device__ void recordError(const char* msg) {
 
 void printLastError() {
     if (!host_err) {
-        printf("printLastError(): ERROR host pointer is not initialized!\n");
+        fprintf(stderr, "printLastError(): ERROR host pointer is not initialized!\n");
         return;
     }
     GPU_MPI_Error& err = *host_err;
     if (err.occured) {
-        printf("GPUMPI: %s block <%d,%d,%d> thread <%d,%d,%d>\n",
+        fprintf(stderr, "GPUMPI: %s block <%d,%d,%d> thread <%d,%d,%d>\n",
             err.msg, err.bx, err.by, err.bz, err.tx, err.ty, err.tz
         );
     } else {
-        printf("GPUMPI: no errors occured\n");
+        fprintf(stderr, "GPUMPI: no errors occured\n");
     }
 }
 
