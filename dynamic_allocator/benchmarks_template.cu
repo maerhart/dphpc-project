@@ -105,7 +105,7 @@ __global__ void v1_flo(int num_floats, clock_t* runtime_malloc, clock_t* runtime
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void v2_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
@@ -128,7 +128,7 @@ __global__ void v2_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v6_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     
     clock_t start_malloc = clock64();
@@ -151,7 +151,7 @@ __global__ void v3_nils(int num_floats, clock_t* runtime_malloc, clock_t* runtim
     runtime_free[id] = end_free - start_free;
 }
 
-__global__ void v4_anton(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
+__global__ void v5_anton(int num_floats, clock_t* runtime_malloc, clock_t* runtime_work, clock_t* runtime_free) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
 
     clock_t start_malloc = clock64();

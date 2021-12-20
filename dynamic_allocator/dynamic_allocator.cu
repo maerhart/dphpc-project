@@ -312,9 +312,7 @@ __device__ void* malloc_v6(size_t size) {
         *(int*)(mem_v3[warpno]) = blockDim.x;
     }
 
-    auto block = cooperative_groups::this_thread_block();
-
-    block.sync();
+    __syncwarp();
 
     void *ptr = (char*)(mem_v3[warpno]) + header + (threadIdx.x % 32) * size;
     *((char *)ptr) = 0;
@@ -326,7 +324,7 @@ __device__ void* malloc_v6(size_t size) {
     bool success;
     insert_v3(table, &kv, &success);
 
-    block.sync();
+    __syncwarp();
 
     if(success) {
 	//printf("block %i thread %i has address %p\n", blockIdx.x, threadIdx.x, ptr);
