@@ -12,6 +12,7 @@
 __global__ void test(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     int* val = (int*) MALLOC(sizeof(int), COALESCE);
+    assert(val != NULL);
     *val = id;
     resulting_ids[id] = *val;
     FREE(val);
@@ -21,6 +22,7 @@ __global__ void test_floats(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(float) * 10;
     float* val = (float*) MALLOC(size, COALESCE);
+    assert(val != NULL);
     val[0] = id;  // write to start of segment
     resulting_ids[id] = val[0];
     FREE(val);
@@ -30,6 +32,7 @@ __global__ void test_different_size(int *resulting_ids) {
     int id = (blockIdx.x*blockDim.x + threadIdx.x);
     size_t size = sizeof(int) * (1 + (id % 32));
     int* val = (int*) MALLOC(size, COALESCE);
+    assert(val != NULL);
     val[id % 32] = id;  // write to very end of segment
     resulting_ids[id] = val[id % 32];
     FREE(val);
@@ -41,22 +44,26 @@ __global__ void test_different_types(int *resulting_ids) {
     int choice = id % 5;
     if (choice == 0 && ((char) id) == id) {
         char* val = (char*) MALLOC(sizeof(char), COALESCE);
+        assert(val != NULL);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 1 && ((short int) id) == id) {
         short int* val = (short int*) MALLOC(sizeof(short int), COALESCE);
+        assert(val != NULL);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 2) {
         long int* val = (long int*) MALLOC(sizeof(long int), COALESCE); // size 64 bits
+        assert(val != NULL);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else if (choice == 3) { // TODO do we need this?
     	// check for 128 bits
         int* val = (int*) MALLOC(16, COALESCE);
+        assert(val != NULL);
     	assert(((long) val) % 16 == 0);
         *val = id;
         resulting_ids[id] = *val;
@@ -65,17 +72,39 @@ __global__ void test_different_types(int *resulting_ids) {
         // check that alignment correct for max_align_t
         int max_size = sizeof(max_align_t);
         int* val = (int*) MALLOC(max_size, COALESCE);
+        assert(val != NULL);
     	assert(((long) val) % max_size == 0);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     } else {
         int* val = (int*) MALLOC(sizeof(int), COALESCE);
+        assert(val != NULL);
         *val = id;
         resulting_ids[id] = *val;
         FREE(val);
     }
 }
+
+/*
+ * This test does currently not pass as the standard malloc does note provide more blocks even if all previouly allcoated blocks are freed.
+ * malloc_v5 always frees all allocated blocks here (investigated manually)
+
+__global__ void test_free(int *resulting_ids) {
+    int id = (blockIdx.x*blockDim.x + threadIdx.x);
+    long runs = 100;
+    long sum = 0;
+    for (int i = 0; i < runs; i++) {
+        int* ptr = (int*) MALLOC(100 * sizeof(int), COALESCE);
+        assert(ptr != NULL);
+        ptr[99] = 1;
+        sum += ptr[99];
+        FREE(ptr);
+    }
+    assert(sum == runs);
+    resulting_ids[id] = id;
+}
+*/
 
 /**
  * Passes pointers around and doesn't free all at same time
@@ -86,6 +115,7 @@ __global__ void test_pass_ptrs(int *resulting_ids) {
     // let thread 0 in block allocate array for entire block
     if (threadIdx.x == 0) {
         ptrs = (int**) MALLOC(sizeof(int*) * blockDim.x, COALESCE);
+        assert(ptrs != NULL);
     } 
     __syncthreads();
 
@@ -190,9 +220,11 @@ int main(int argc, char* argv[]) {
     // run some simple unit tests, only in debug mode!
     int blocks = 100;
     int threads_per_block = 128;
+
     run_test("basic          ", blocks, threads_per_block, test);
-    run_test("different sizes", blocks, threads_per_block, test_different_size);
+    //run_test("free           ", 10, 64, test_free);
     run_test("different types", blocks, threads_per_block, test_different_types);
+    run_test("different sizes", blocks, threads_per_block, test_different_size);
     run_test("pass ptrs      ", blocks, threads_per_block, test_pass_ptrs);
 
     return 0;
