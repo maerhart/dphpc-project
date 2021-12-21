@@ -76,13 +76,24 @@ __device__ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
             const int sdispls[], MPI_Datatype sendtype,
             void *recvbuf, const int recvcounts[],
             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm);
-__device__ int MPI_Alltoall_coalesce(const void *sendbuf, int sendcount,
-            MPI_Datatype sendtype, void *recvbuf, int recvcount,
-            MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);
-__device__ int MPI_Alltoallv_coalesce(const void *sendbuf, const int sendcounts[],
-            const int sdispls[], MPI_Datatype sendtype,
-            void *recvbuf, const int recvcounts[],
+
+#define MPI_ATAH(suffix) \
+__device__ int MPI_Alltoall_##suffix(const void *sendbuf, int sendcount,                       \
+            MPI_Datatype sendtype, void *recvbuf, int recvcount,                               \
+            MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);                     \
+__device__ int MPI_Alltoallv_##suffix(const void *sendbuf, const int sendcounts[],             \
+            const int sdispls[], MPI_Datatype sendtype,                                        \
+            void *recvbuf, const int recvcounts[],                                             \
             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm, bool __coalesced=false);
+
+MPI_ATAH(coalesce)
+MPI_ATAH(v1)
+MPI_ATAH(v2)
+MPI_ATAH(v3)
+MPI_ATAH(v4)
+MPI_ATAH(v5)
+MPI_ATAH(v6)
+
 __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype sendtype, void *recvbuf, int recvcount,
              MPI_Datatype recvtype, MPI_Comm comm);

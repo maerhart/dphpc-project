@@ -407,82 +407,79 @@ __device__ int MPI_Alltoallv(
     return MPI_SUCCESS;
 }
 
-__device__ int MPI_Alltoall_coalesce(
-    const void *sendbuf, int sendcount, MPI_Datatype sendtype,
-    void *recvbuf, int recvcount, MPI_Datatype recvtype,
-    MPI_Comm comm, bool __coalesced)
-{
-    int comm_size = -1;
-    MPI_Comm_size(comm, &comm_size);
-
-    int* sdispls = (int*) __gpu_malloc_coalesce(comm_size * sizeof(int), __coalesced);
-    int* rdispls = (int*) __gpu_malloc_coalesce(comm_size * sizeof(int), __coalesced);
-    int* sendcounts = (int*) __gpu_malloc_coalesce(comm_size * sizeof(int), __coalesced);
-    int* recvcounts = (int*) __gpu_malloc_coalesce(comm_size * sizeof(int), __coalesced);
-
-    for (int i = 0; i < comm_size; i++) {
-        sdispls[i] = i * sendcount;
-        rdispls[i] = i * recvcount;
-        sendcounts[i] = sendcount;
-        recvcounts[i] = recvcount;
-    }
-    int res = MPI_Alltoallv_coalesce(
-        sendbuf, sendcounts, sdispls, sendtype,
-        recvbuf, recvcounts, rdispls, recvtype, comm, __coalesced);
-
-    free(sdispls);
-    free(rdispls);
-    free(sendcounts);
-    free(recvcounts);
-
-    return res;
+#define MPI_ATA(suffix, mallocv) \
+__device__ int MPI_Alltoall_##suffix(\
+    const void *sendbuf, int sendcount, MPI_Datatype sendtype,\
+    void *recvbuf, int recvcount, MPI_Datatype recvtype,\
+    MPI_Comm comm, bool __coalesced)\
+{                                  \
+    int comm_size = -1;            \
+    MPI_Comm_size(comm, &comm_size);\
+    int* sdispls = (int*) mallocv(comm_size * sizeof(int), __coalesced);\
+    int* rdispls = (int*) mallocv(comm_size * sizeof(int), __coalesced);\
+    int* sendcounts = (int*) mallocv(comm_size * sizeof(int), __coalesced);\
+    int* recvcounts = (int*) mallocv(comm_size * sizeof(int), __coalesced);\
+    for (int i = 0; i < comm_size; i++) {\
+        sdispls[i] = i * sendcount;\
+        rdispls[i] = i * recvcount;\
+        sendcounts[i] = sendcount; \
+        recvcounts[i] = recvcount; \
+    }                              \
+    int res = MPI_Alltoallv_coalesce(\
+        sendbuf, sendcounts, sdispls, sendtype,\
+        recvbuf, recvcounts, rdispls, recvtype, comm, __coalesced);\
+    free(sdispls);                 \
+    free(rdispls);                 \
+    free(sendcounts);              \
+    free(recvcounts);              \
+    return res;                    \
+}                                  \
+__device__ int MPI_Alltoallv_##suffix(\
+    const void *sendbuf, const int sendcounts[], const int sdispls[], MPI_Datatype sendtype,\
+    void *recvbuf, const int recvcounts[], const int rdispls[], MPI_Datatype recvtype, \
+    MPI_Comm comm, bool __coalesced) \
+{                                  \
+    int comm_size = -1;            \
+    int comm_rank = -1;            \
+    MPI_Comm_size(comm, &comm_size);\
+    MPI_Comm_rank(comm, &comm_rank);\
+    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);\
+    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);\
+    MPI_Request* send_requests = (MPI_Request*) mallocv(sizeof(MPI_Request) * comm_size, __coalesced);\
+    MPI_Request* recv_requests = (MPI_Request*) mallocv(sizeof(MPI_Request) * comm_size, __coalesced);\
+    assert(send_requests && "Can't allocate memory");\
+    assert(recv_requests && "Can't allocate memory");\
+    for (int i = 0; i < comm_size; i++) {\
+        if (i != comm_rank) {      \
+            MPI_Isend(((char*)sendbuf) + sdispls[i] * sendElemSize, sendcounts[i], sendtype, i, MPI_COLLECTIVE_TAG, comm, &send_requests[i]);\
+        }                          \
+    }                              \
+    for (int i = 0; i < comm_size; i++) {\
+        if (i != comm_rank) {      \
+            MPI_Irecv(((char*)recvbuf) + rdispls[i] * recvElemSize, recvcounts[i], recvtype, i, MPI_COLLECTIVE_TAG, comm, &recv_requests[i]);\
+        }                          \
+    }                              \
+    memcpy(((char*)recvbuf) + rdispls[comm_rank] * recvElemSize, \
+           ((char*)sendbuf) + sdispls[comm_rank] * sendElemSize,\
+           recvcounts[comm_rank] * recvElemSize);\
+    for (int i = 0; i < comm_size; i++) {\
+        if (i != comm_rank) {      \
+            MPI_Wait(&send_requests[i], MPI_STATUS_IGNORE);\
+            MPI_Wait(&recv_requests[i], MPI_STATUS_IGNORE);\
+        }                          \
+    }                              \
+    free(send_requests);           \
+    free(recv_requests);           \
+    return MPI_SUCCESS;            \
 }
-__device__ int MPI_Alltoallv_coalesce(
-    const void *sendbuf, const int sendcounts[], const int sdispls[], MPI_Datatype sendtype,
-    void *recvbuf, const int recvcounts[], const int rdispls[], MPI_Datatype recvtype, 
-    MPI_Comm comm, bool __coalesced) 
-{
-    int comm_size = -1;
-    int comm_rank = -1;
-    MPI_Comm_size(comm, &comm_size);
-    MPI_Comm_rank(comm, &comm_rank);
 
-    int sendElemSize = gpu_mpi::plainTypeSize(sendtype);
-    int recvElemSize = gpu_mpi::plainTypeSize(recvtype);
-
-    MPI_Request* send_requests = (MPI_Request*) __gpu_malloc_coalesce(sizeof(MPI_Request) * comm_size, __coalesced);
-    MPI_Request* recv_requests = (MPI_Request*) __gpu_malloc_coalesce(sizeof(MPI_Request) * comm_size, __coalesced);
-    assert(send_requests && "Can't allocate memory");
-    assert(recv_requests && "Can't allocate memory");
-
-    for (int i = 0; i < comm_size; i++) {
-        if (i != comm_rank) {
-            MPI_Isend(((char*)sendbuf) + sdispls[i] * sendElemSize, sendcounts[i], sendtype, i, MPI_COLLECTIVE_TAG, comm, &send_requests[i]);
-        }
-    }
-
-    for (int i = 0; i < comm_size; i++) {
-        if (i != comm_rank) {
-            MPI_Irecv(((char*)recvbuf) + rdispls[i] * recvElemSize, recvcounts[i], recvtype, i, MPI_COLLECTIVE_TAG, comm, &recv_requests[i]);
-        }
-    }
-
-    memcpy(((char*)recvbuf) + rdispls[comm_rank] * recvElemSize, 
-           ((char*)sendbuf) + sdispls[comm_rank] * sendElemSize,
-           recvcounts[comm_rank] * recvElemSize);
-
-    for (int i = 0; i < comm_size; i++) {
-        if (i != comm_rank) {
-            MPI_Wait(&send_requests[i], MPI_STATUS_IGNORE);
-            MPI_Wait(&recv_requests[i], MPI_STATUS_IGNORE);
-        }
-    }
-
-    free(send_requests);
-    free(recv_requests);
-
-    return MPI_SUCCESS;
-}
+MPI_ATA(coalesce, __gpu_malloc_coalesce)
+MPI_ATA(v1, __gpu_malloc_v1)
+MPI_ATA(v2, __gpu_malloc_v2)
+MPI_ATA(v3, __gpu_malloc_v3)
+MPI_ATA(v4, __gpu_malloc_v4)
+MPI_ATA(v5, __gpu_malloc_v5)
+MPI_ATA(v6, __gpu_malloc_v6)
 
 __device__ int MPI_Allgather(const void *sendbuf, int  sendcount,
              MPI_Datatype sendtype, void *recvbuf, int recvcount,
