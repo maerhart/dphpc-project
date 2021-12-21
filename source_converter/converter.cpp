@@ -267,7 +267,7 @@ public:
         mMatcher.addMatcher(namedDecl(hasName("class")).bind("classTokenDecl"), &mFuncConverter);
 
         if (MallocVersion.getValue() > 0) {
-            if (MallocVersion.getValue() == 3)
+            if (MallocVersion.getValue() == 3 || MallocVersion.getValue() == 7)
                 mMatcher.addMatcher(functionDecl(isMain(), unless(isImplicit())).bind("mainFunc"), &mFuncConverter);
 
             mMatcher.addMatcher(functionDecl(unless(isMain()), unless(isImplicit()),
