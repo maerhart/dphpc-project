@@ -10,9 +10,7 @@ set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) # prevents mess with host/device linkin
 # enable system-wide atomics: atomicCAS_system (compute capability >= 6.0)
 set(CMAKE_CUDA_FLAGS 
     "${CMAKE_CUDA_FLAGS} \
-    -gencode arch=compute_60,code=sm_60 \
-    -gencode arch=compute_61,code=sm_61 \
-    -gencode arch=compute_70,code=sm_70")
+    -gencode arch=compute_75,code=sm_75")
 
 add_subdirectory(gpu_libc)
 add_subdirectory(gpu_mpi)

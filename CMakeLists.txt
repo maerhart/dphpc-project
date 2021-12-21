@@ -12,14 +12,12 @@ set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G")
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON) 
 
 # specify cuda architectures for newer cmake
-set(CMAKE_CUDA_ARCHITECTURES 60 61 70)
+set(CMAKE_CUDA_ARCHITECTURES 75)
 
 # specify cuda architectures for older cmake
 set(CMAKE_CUDA_FLAGS
     "${CMAKE_CUDA_FLAGS} \
-    -gencode arch=compute_60,code=sm_60 \
-    -gencode arch=compute_61,code=sm_61 \
-    -gencode arch=compute_70,code=sm_70")
+    -gencode arch=compute_75,code=sm_75")
 
 add_subdirectory(common)
 add_subdirectory(source_converter)

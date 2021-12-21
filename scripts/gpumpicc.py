@@ -193,11 +193,11 @@ if __name__ == '__main__':
     cuda_args = cuda_compatible_compilation_args(compilation_args)
 
 
-    gpu_arch_flags = '@CMAKE_CUDA_FLAGS@'.split() # pass gpu arch
+    gpu_arch_flags = ['-gencode', 'arch=compute_75,code=sm_75'] # '@CMAKE_CUDA_FLAGS@'.split() # pass gpu arch
 
     # pass debug compile flags if they present
-    if "@CMAKE_BUILD_TYPE@" == "Debug":
-        gpu_arch_flags += '@CMAKE_CUDA_FLAGS_DEBUG@'.split()
+    # if "@CMAKE_BUILD_TYPE@" == "Debug":
+    #     gpu_arch_flags += '@CMAKE_CUDA_FLAGS_DEBUG@'.split()
 
     #print('CMAKE_CUDA_FLAGS', gpu_arch_flags)
 

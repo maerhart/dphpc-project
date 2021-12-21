@@ -249,9 +249,7 @@ def write_cmake_header(cmake):
     
         # set(CMAKE_CUDA_FLAGS 
         #     "${CMAKE_CUDA_FLAGS} \
-        #     -gencode arch=compute_60,code=sm_60 \
-        #     -gencode arch=compute_61,code=sm_61 \
-        #     -gencode arch=compute_70,code=sm_70")
+        #     -gencode arch=compute_75,code=sm_75")
     
         #include(${SCRIPTDIR}/../gpu_libs/gpu_libs-exports.cmake)
     
