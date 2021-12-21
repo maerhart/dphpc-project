@@ -259,3 +259,11 @@ __device__ void* __gpu_calloc_v6(size_t nmemb, size_t size, bool coalesced) {
 __device__ void __gpu_free_v6(void *memptr) {
     combined_free(memptr);
 }
+
+__device__ void __gpu_init_malloc_v6() {
+    init_malloc();
+}
+
+__device__ void __gpu_clean_malloc_v6() {
+    clean_malloc();
+}
