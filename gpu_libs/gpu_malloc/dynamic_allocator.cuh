@@ -16,3 +16,7 @@ __device__ void clean_malloc_v3();
 __device__ void* malloc_v3(size_t size, bool coalesced = false);
 
 __device__ void free_v3(void *memptr);
+
+__device__ void* malloc_v6(size_t size, bool coalesced = false);
+
+__device__ void free_v6(void *memptr);

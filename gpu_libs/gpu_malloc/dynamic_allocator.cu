@@ -150,6 +150,8 @@ struct KeyValue {
 __constant__ static uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
 __constant__ static uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
 __constant__ static void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
+__constant__ uint32_t alignment = 16;
+__constant__ uint32_t warp_offset = 0;
 
 // 32 bit Murmur3 hash
 //__device__ uint32_t hash(uint32_t k) {
@@ -228,8 +230,8 @@ __shared__ static void **mem_v3;
 __device__ void init_malloc_v3() {
     if(!threadIdx.x) {
         table = (KeyValue *) malloc(capacity_v3 * sizeof(KeyValue));
-	mem_v3 = (void **) malloc(sizeof(void *));
-        if(table != NULL && mem_v3 != NULL) {
+    	mem_v3 = (void **) malloc(sizeof(void *) * 32);    
+	if(table != NULL && mem_v3 != NULL) {
             memset(table, 0xff, sizeof(KeyValue) * capacity_v3);
 	} else {
 	    printf("block %i table not inited %p \n", blockIdx.x, table);
@@ -249,10 +251,14 @@ __device__ void clean_malloc_v3() {
     block.sync();
 }
 __device__ void* malloc_v3(size_t size, bool coalesced) {
-    
+    int header = alignment;
+	size += ((alignment - (size % alignment)) % alignment);
+	size_t warp_offsets = ((blockDim.x + 31) / 32 - 1) * warp_offset;
+	uint32_t warpno = threadIdx.x / 32;
+
     if (!threadIdx.x) {
-	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, blockDim.x * (int)size);
-        *mem_v3 = malloc(size * blockDim.x + sizeof(int));
+		//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, (int)((int)size * blockDim.x + (int)header + warp_offsets));
+		*mem_v3 = malloc(size * blockDim.x + header + warp_offsets);
 	if (*mem_v3 == NULL) {
 	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
 	    return NULL;
@@ -265,8 +271,9 @@ __device__ void* malloc_v3(size_t size, bool coalesced) {
 
     block.sync();
 
-    void *ptr = (char*)*mem_v3 + sizeof(int) + threadIdx.x * size;
-    KeyValue kv = {
+    void *ptr = (char*)*mem_v3 + header + threadIdx.x * size + (warpno * warp_offset);
+	*((char *)ptr) = 0;
+	KeyValue kv = {
         .key = (void *) ptr,
         .value = (void *) *mem_v3
     };
@@ -286,6 +293,61 @@ __device__ void* malloc_v3(size_t size, bool coalesced) {
 
 __device__ void free_v3(void *memptr) {
     
+    KeyValue kv = {
+        .key = memptr,
+        .value = empty
+    };
+
+    lookup_v3(table, &kv);
+    int *counter_ptr = (int *) kv.value;
+    int counter = atomicSub(counter_ptr, 1);
+    remove_v3(table, &kv);
+
+    if (counter == 1) {
+        free(counter_ptr);
+    }
+}
+
+__device__ void* malloc_v6(size_t size, bool coalesced) {
+    int header = alignment;
+    size += ((alignment - (size % alignment)) % alignment);
+    uint32_t warpno = threadIdx.x / 32;
+    if (threadIdx.x % 32 == 0) {
+	int allocates_for = blockDim.x - threadIdx.x;
+	allocates_for = (allocates_for > 32) ? 32 : allocates_for;
+	//printf("block %i thread %i mallocs %i \n", blockIdx.x, threadIdx.x, (int)((int)size * allocates_for + header));
+        mem_v3[warpno] = malloc(size * allocates_for + header);
+	if (mem_v3[warpno] == NULL) {
+	    printf("block %i super block of size %i failed\n", blockIdx.x, blockDim.x * (int)size);
+	    return NULL;
+	}
+        // Initialize counter
+        *(int*)(mem_v3[warpno]) = blockDim.x;
+    }
+
+    __syncwarp();
+
+    void *ptr = (char*)(mem_v3[warpno]) + header + (threadIdx.x % 32) * size;
+    *((char *)ptr) = 0;
+    KeyValue kv = {
+        .key = (void *) ptr,
+        .value = (void *) (mem_v3[warpno])
+    };
+
+    bool success;
+    insert_v3(table, &kv, &success);
+
+    __syncwarp();
+
+    if(success) {
+	//printf("block %i thread %i has address %p\n", blockIdx.x, threadIdx.x, ptr);
+        return ptr;
+    } else {
+        return NULL;
+    }
+}
+
+__device__ void free_v6(void *memptr) {
     KeyValue kv = {
         .key = memptr,
         .value = empty
