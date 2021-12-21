@@ -8,15 +8,17 @@ mkdir -p $DIRECTORY
 SOURCE=$ROOTDIR/../gpu_libs/gpu_malloc
 
 HEADER="version workload runs warmup blocks threads_per_block num_floats malloc_mean malloc_max free_mean free_max work_mean work_max"
-WORKLOADS="sum_reduce dot_product" # dot_product pair_prod sum_all_prod" #max_reduce
-VERSION="baseline v1_flo v1_martin v3_nils v4_anton v5_anton"
+WORKLOADS="sum_reduce sum_all_prod" # dot_product pair_prod sum_all_prod" #max_reduce
+VERSION="baseline v1_martin v3_nils v5_anton v6_nils"
 BLOCKS=(192 96 48 24 12)
 THREADS=(64 128 256 512 1024)
 
 FLOATS=()
-for i in {0..12}
+#for i in {0..9} # powers of 2
+for i in {1..100} # linear
 do
-    FLOATS+=( $((2**$i)) ) # powers of 2
+    #FLOATS+=( $((2**$i)) ) # powers of 2
+    FLOATS+=( $i ) # linear
 done
 
 RUNS="20"
