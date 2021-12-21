@@ -147,9 +147,9 @@ struct KeyValue {
     void *value;
 };
 
-__constant__ uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
-__constant__ uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
-__constant__ void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
+__constant__ static uint32_t capacity_v3 = 1024 * 8; // 8 MB per block
+__constant__ static uint32_t max_chain_v3 = 1024 * 8 / 2; //half of capacity
+__constant__ static void *empty = (void *)((0xfffffffful << 32) | 0xfffffffful);
 
 // 32 bit Murmur3 hash
 //__device__ uint32_t hash(uint32_t k) {
@@ -222,8 +222,8 @@ __device__ void remove_v3(KeyValue *hashtable, KeyValue *kv) {
     }
 }
 
-__shared__ KeyValue *table;
-__shared__ void **mem_v3;
+__shared__ static KeyValue *table;
+__shared__ static void **mem_v3;
 
 __device__ void init_malloc_v3() {
     if(!threadIdx.x) {

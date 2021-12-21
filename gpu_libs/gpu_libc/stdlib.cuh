@@ -60,4 +60,8 @@ __device__ void* __gpu_malloc_v5(size_t size, bool coalesced = false);
 __device__ void* __gpu_calloc_v5(size_t nmemb, size_t size, bool coalesced = false);
 __device__ void __gpu_free_v5(void* memptr);
 
+__device__ void* __gpu_malloc_v6(size_t size, bool coalesced = false);
+__device__ void* __gpu_calloc_v6(size_t nmemb, size_t size, bool coalesced = false);
+__device__ void __gpu_free_v6(void* memptr);
+
 #endif

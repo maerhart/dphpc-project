@@ -73,8 +73,8 @@ __device__ void remove(KeyValue *hashtable, KeyValue *kv) {
     }
 }
 
-__shared__ KeyValue *table;
-__shared__ void **mem;
+__shared__ static KeyValue *table;
+__shared__ static void **mem;
 
 __device__ void init_malloc() {
     if(!threadIdx.x) {
@@ -99,7 +99,7 @@ __device__ void clean_malloc() {
     }
     __syncthreads();
 }
-__device__ void* malloc_v3(size_t size) {
+__device__ void* malloc_v3_comb(size_t size) {
     int header = alignment;
     size += ((alignment - (size % alignment)) % alignment);
     if (!threadIdx.x) {
@@ -133,7 +133,7 @@ __device__ void* malloc_v3(size_t size) {
     }
 }
 
-__device__ void free_v3(void *memptr) {
+__device__ bool free_v3_comb(void *memptr) {
     KeyValue kv = {
         .key = memptr,
         .value = empty

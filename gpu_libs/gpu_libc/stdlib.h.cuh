@@ -56,6 +56,12 @@
 #define calloc __gpu_calloc_coalesce
 #define free __gpu_free_coalesce
 #endif
+#ifdef GPUMPI_MALLOC_V7
+#define GPUMPI_COALESCED
+#define malloc __gpu_malloc_v6
+#define calloc __gpu_calloc_v6
+#define free __gpu_free_v6
+#endif
 
 #ifndef GPUMPI_COALESCED
 #define malloc __gpu_malloc

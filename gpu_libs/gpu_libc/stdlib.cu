@@ -6,6 +6,7 @@
 #include "dyn_malloc.cuh"
 #include "warp_malloc.cuh"
 #include "dynamic_allocator.cuh"
+#include "combined_malloc.cuh"
 
 __device__ void __gpu_qsort(void *base, size_t nmemb, size_t size,
                       int (*compar)(const void *, const void *))
@@ -161,7 +162,7 @@ __device__ void __gpu_free_v2(void *memptr) {
 __device__ void* __gpu_malloc_v3(size_t size, bool coalesced) {   
     void* ptr = malloc_v3(size, coalesced);
     #ifndef NDEBUG
-    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    __gpu_fprintf(__gpu_stderr, "Performed malloc_v3\n");
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }
@@ -193,7 +194,7 @@ __device__ void __gpu_clean_malloc() {
 __device__ void* __gpu_malloc_v4(size_t size, bool coalesced) {   
     void* ptr = malloc_v4(size, coalesced);
     #ifndef NDEBUG
-    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    __gpu_fprintf(__gpu_stderr, "Performed malloc_v4\n");
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }
@@ -216,7 +217,7 @@ __device__ void __gpu_free_v4(void *memptr) {
 __device__ void* __gpu_malloc_v5(size_t size, bool coalesced) {   
     void* ptr = malloc_v5(size, coalesced);
     #ifndef NDEBUG
-    __gpu_fprintf(__gpu_stderr, "Performed dyn_malloc\n");
+    __gpu_fprintf(__gpu_stderr, "Performed malloc_v5\n");
     if (!ptr) {
         printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
     }
@@ -234,4 +235,27 @@ __device__ void* __gpu_calloc_v5(size_t nmemb, size_t size, bool coalesced) {
 
 __device__ void __gpu_free_v5(void *memptr) {
     free_v5(memptr);
+}
+
+__device__ void* __gpu_malloc_v6(size_t size, bool coalesced) {   
+    void* ptr = combined_malloc(size, coalesced);
+    #ifndef NDEBUG
+    __gpu_fprintf(__gpu_stderr, "Performed malloc_v6\n");
+    if (!ptr) {
+        printf("GPUMPI: malloc failed to allocate %llu bytes on device\n", (long long unsigned)size);
+    }
+    #endif
+    return ptr;
+}
+
+__device__ void* __gpu_calloc_v6(size_t nmemb, size_t size, bool coalesced) {
+    void* ptr = __gpu_malloc_v6(nmemb * size, coalesced);
+    if (ptr) {
+        memset(ptr, 0, nmemb * size);
+    }
+    return ptr;
+}
+
+__device__ void __gpu_free_v6(void *memptr) {
+    combined_free(memptr);
 }
