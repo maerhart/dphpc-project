@@ -51,19 +51,7 @@ int main(int argc, char *argv[]) {
   free(local_x);
   t_free = MPI_Wtime() - start;
 
-  if (my_rank == 0) printf("malloc ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_malloc);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n work ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_work);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n free ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_free);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n");
+  printf("%f %f %f\n", t_malloc, t_work, t_free);
 
   MPI_Finalize();
 

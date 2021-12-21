@@ -21,10 +21,9 @@ int main(int argc, char *argv[]) {
   // measure malloc time
   start = MPI_Wtime();
   double *local_x = (double *) malloc(n_elems * sizeof(double));
+  double *local_y = (double *) malloc(n_elems * sizeof(double));
   t_malloc = MPI_Wtime() - start;
 
-  double *local_y;
-  if (my_rank == 0) local_y = (double *) malloc(n_elems * sizeof(double));
 
   // init memory
   for(i = 0; i < n_elems; i++) {
@@ -52,23 +51,11 @@ int main(int argc, char *argv[]) {
   // measure free time
   start = MPI_Wtime();
   free(local_x);
+  free(local_y);
   t_free = MPI_Wtime() - start;
 
-  if (my_rank == 0) free(local_y);
 
-  if (my_rank == 0) printf("malloc ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_malloc);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n work ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_work);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n free ");
-  MPI_Barrier(MPI_COMM_WORLD);
-  printf("%f ", t_free);
-  MPI_Barrier(MPI_COMM_WORLD);
-  if (my_rank == 0) printf("\n");
+  printf("%f %f %f\n", t_malloc, t_work, t_free);
 
   MPI_Finalize();
 
