@@ -43,7 +43,14 @@ void run_benchmark_separate(int num_runs, int num_warmup, double* mean_runtimes_
                         cudaMemcpy(runtimes_host_work, runtimes_device_work, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost);
                         clock_t* runtimes_host_free = (clock_t*)malloc(total_threads * sizeof(clock_t));
                         cudaMemcpy(runtimes_host_free, runtimes_device_free, total_threads * sizeof(clock_t), cudaMemcpyDeviceToHost);
-
+                        
+                        cudaError_t err = cudaGetLastError();
+                        if (err != cudaSuccess)
+                        {
+                            const char * errorMessage = cudaGetErrorString(err);
+                            printf("CUDA error: %s \n", errorMessage);
+                        }
+                    
                         double sum_malloc = 0;
                         double sum_work = 0;
                         double sum_free = 0;
