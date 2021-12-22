@@ -43,11 +43,15 @@ int main(int argc, char *argv[]) {
       local_prod = dotProduct(local_x,local_y,n_elems);
     }
     start = MPI_Wtime();
-    for (int j = 0; j < 500000; ++j) {
-      local_prod = dotProduct(local_x,local_y,n_elems);
+    for (int j = 0; j < 10000; ++j) {
+      local_prod += dotProduct(local_x,local_y,n_elems);
     }
     t_work = MPI_Wtime() - start;
     // MPI_Reduce(&local_prod, &prod, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    if (local_prod < 0) {
+      printf("strange\n");
+    }
 
     start = MPI_Wtime();
     free(local_x);
@@ -71,11 +75,15 @@ int main(int argc, char *argv[]) {
     local_prod = dotProduct(local_x,local_y,n_elems);
   }
   start = MPI_Wtime();
-  for (int j = 0; j < 500000; ++j) {
-    local_prod = dotProduct(local_x,local_y,n_elems);
+  for (int j = 0; j < 10000; ++j) {
+    local_prod += dotProduct(local_x,local_y,n_elems);
   }
   t_work += MPI_Wtime() - start;
   // MPI_Reduce(&local_prod, &prod, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  if (local_prod < 0) {
+    printf("strange\n");
+  }
 
   start = MPI_Wtime();
   free(local_x);

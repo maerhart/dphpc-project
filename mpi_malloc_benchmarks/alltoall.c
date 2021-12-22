@@ -38,6 +38,8 @@ int main(int argc, char *argv[]) {
   free(local_y);
   t_free = MPI_Wtime() - start;
 
+  MPI_Barrier(MPI_COMM_WORLD);
+
   printf("%f %f %f\n", t_malloc, t_work, t_free);
 
   MPI_Finalize();
