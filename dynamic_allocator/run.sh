@@ -15,10 +15,12 @@ THREADS=(64 128 256 512 1024)
 
 FLOATS=()
 #for i in {0..9} # powers of 2
-for i in {1..100} # linear
+#for i in {1..100} # linear
+for i in {1..20} # every 25th
 do
     #FLOATS+=( $((2**$i)) ) # powers of 2
-    FLOATS+=( $i ) # linear
+    #FLOATS+=( $i ) # linear
+    FLOATS+=( $((25*$i)) ) # every 25th
 done
 
 RUNS="20"
